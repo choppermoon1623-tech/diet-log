@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>カロン — 表情プレビュー</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #fdf6ee; color: #4a3b35; font-family: system-ui, sans-serif; }
+    main { display: flex; gap: 12px; width: 100%; max-width: 900px; margin: 32px auto; padding: 0 16px; }
+    figure { flex: 0 1 160px; min-width: 0; margin: 0; text-align: center; }
+    svg { display: block; width: 100%; height: auto; }
+    figcaption { margin-top: 8px; font-size: 12px; line-height: 1.5; }
+    @media (max-width: 600px) { main { gap: 4px; padding: 0 8px; } }
+  </style>
+</head>
+<body>
+  <main aria-label="カロンの表情5種"></main>
+  <script src="chara.js"></script>
+  <script>
+    const gallery = document.querySelector("main");
+    Object.entries(CHARA).forEach(function (entry) {
+      const figure = document.createElement("figure");
+      figure.innerHTML = entry[1];
+      const label = document.createElement("figcaption");
+      label.textContent = entry[0];
+      figure.appendChild(label);
+      gallery.appendChild(figure);
+    });
+  </script>
+</body>
+</html>
