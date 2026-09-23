@@ -6,7 +6,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="カロリー帳">
-<meta name="theme-color" content="#2f7d63">
+<meta name="theme-color" content="#F4EFE4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161512" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Shippori+Mincho+B1:wght@800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
 <title>カロリー帳</title>
 <style>
 :root{
@@ -237,6 +241,185 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .toast.on{pointer-events:auto}
 .save-error{position:sticky;bottom:68px;z-index:70;background:#fff0ed;color:#802e20;padding:12px;border:2px solid #c0492f;margin:12px;border-radius:12px}
 .app-title{font-size:.74rem;font-weight:700;letter-spacing:.12em;color:var(--accent);text-align:center;padding:4px 0}
+
+/* ============================================================
+   帳面（ちょうめん）テーマ — 生成りの地・墨の文字・柿色（食べた）・松葉色（使った）
+   ============================================================ */
+:root{
+  --bg:#F4EFE4; --card:#FFFCF6; --ink:#1F1D1A; --sub:#6B6358; --line:#E7DECE; --line2:#EFE8DA; --faint:#A89E8E;
+  --accent:#2E6A4F; --accent-w:#DDEBE2; --on-accent:#FFFCF6;
+  --in:#C4552B; --in-w:#F6E2D5; --out:#2E6A4F; --out2:#5E9479; --out3:#8DB9A2;
+  --minus:#2E6A4F; --plus:#C4552B;
+  --share1:#C4552B; --share2:#D9825F; --share3:#E8AD90; --share4:#EBC9B8;
+  --shadow:none; --r:22px;
+  --f-num:"Fraunces",Georgia,serif;
+  --f-head:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#161512; --card:#211F1B; --ink:#EEE8DC; --sub:#A89F90; --line:#34302A; --line2:#2B2823; --faint:#7D7568;
+    --accent:#74C29B; --accent-w:#203A2E; --on-accent:#161512;
+    --in:#E8825A; --in-w:#3D2A20; --out:#74C29B; --out2:#4F9A76; --out3:#2F6B50;
+    --minus:#74C29B; --plus:#E8825A;
+    --share1:#E8825A; --share2:#C96F4C; --share3:#A95E42; --share4:#7A4A36;
+    --shadow:none;
+  }
+}
+body{font-family:"Zen Kaku Gothic New",-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+.wrap{padding:0 16px}
+.card,.list{box-shadow:none;border:1px solid var(--line)}
+.card{padding:18px 20px;margin-bottom:14px}
+.list{margin-bottom:14px}
+.item{border-bottom-color:var(--line2);padding:4px 4px 4px 16px;min-height:52px}
+.item .kc,.pick .kc,.kv b,.sumline b,.hrow .bal,.stat div b{font-family:var(--f-num);font-weight:600}
+.item .kc{font-size:1rem}
+.item .del{color:var(--faint)}
+.item .del svg{width:16px;height:16px}
+.addrow{min-height:50px;padding:0 16px;border-top:1px dashed var(--line);color:var(--in);font-size:.9rem;gap:8px}
+.addrow .p{background:none;width:18px;height:18px}
+.addrow.ex{color:var(--accent)}
+.empty{border-bottom:1px solid var(--line2)}
+
+/* 見出し */
+h2.sec{font-family:var(--f-head);font-weight:800;font-size:1.3rem;letter-spacing:.06em;color:var(--ink);margin:26px 4px 10px}
+.sech h2.sec{margin:0}
+.sech{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:26px 4px 10px}
+.sech .tot{font-size:.88rem;color:var(--sub)}
+.sech .tot b{font-family:var(--f-num);font-weight:600;font-size:1.2rem;color:var(--ink);margin-right:3px}
+.sbody h2.sec,.sec.small{font-family:inherit;font-size:.76rem;font-weight:700;letter-spacing:.1em;color:var(--sub);margin:16px 4px 6px}
+.pagehead{padding:calc(env(safe-area-inset-top) + 22px) 4px 12px}
+.pagehead small{display:block;font-size:.72rem;font-weight:700;letter-spacing:.16em;color:var(--in)}
+.pagehead h1{margin:2px 0 0;font-family:var(--f-head);font-weight:800;font-size:1.9rem;letter-spacing:.06em}
+
+/* 上の帯 */
+header.top{padding-top:calc(env(safe-area-inset-top) + 14px)}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 2px 10px}
+.brand .seal{width:28px;height:28px;border-radius:6px;background:var(--in);color:var(--card);display:grid;place-items:center;
+  font-family:var(--f-head);font-weight:800;font-size:17px;line-height:1}
+.brand .wm{font-family:var(--f-head);font-weight:800;font-size:1.06rem;letter-spacing:.08em}
+.brand .chip:empty{display:none}
+.brand .chip{margin-left:auto;font-size:.74rem;font-weight:700;color:var(--accent);background:var(--accent-w);padding:4px 11px;border-radius:99px}
+.datebar{gap:12px;padding:0 0 12px}
+.datebar .d{font-family:var(--f-head);font-weight:800;font-size:1.85rem;line-height:1.1;letter-spacing:.02em}
+.datebar .d small{font-family:"Zen Kaku Gothic New",sans-serif;font-size:.74rem;letter-spacing:.1em;margin-top:3px}
+.navbtn{width:44px;height:44px;box-shadow:none;border:1px solid var(--line);color:var(--ink)}
+
+/* 収支カード */
+.balance{text-align:left;padding:22px 22px 18px;display:grid;gap:16px}
+.balance .bhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.balance .lbl{margin:0;font-size:.8rem;font-weight:700;letter-spacing:.12em;color:var(--sub)}
+.balance .lbl2{font-size:.74rem;color:var(--sub)}
+.balance .num{font-family:var(--f-num);font-weight:600;font-size:4.6rem;line-height:.95;letter-spacing:-.03em;margin-top:-6px}
+.balance .num .u{font-family:"Zen Kaku Gothic New",sans-serif;font-size:1rem;font-weight:700;margin-left:8px;letter-spacing:0}
+.balance .note{margin:-6px 0 0;font-size:.84rem;color:var(--sub)}
+.meter{position:relative;height:12px;border-radius:99px;background:var(--line2)}
+.meter i{position:absolute;left:0;top:0;bottom:0;border-radius:99px;transition:width .35s ease}
+.meter b{position:absolute;right:-1px;top:-5px;width:2px;height:22px;border-radius:2px;background:var(--ink)}
+.goalbar{margin:-8px 0 0;padding:0;border:none;font-size:.82rem}
+.goalbar b{font-size:.95rem}
+.duo{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line);padding-top:16px}
+.duo>div{display:grid;gap:6px}
+.duo>div:first-child{padding-right:16px;border-right:1px solid var(--line)}
+.duo>div:last-child{padding-left:16px}
+.duo .cap{display:flex;align-items:center;gap:6px;font-size:.74rem;font-weight:700;letter-spacing:.08em;color:var(--sub)}
+.duo .cap i{width:8px;height:8px;border-radius:50%}
+.duo .v{font-family:var(--f-num);font-weight:600;font-size:1.75rem;line-height:1;font-variant-numeric:tabular-nums}
+.duo .tr{height:5px;border-radius:99px;background:var(--line2);overflow:hidden}
+.duo .tr i{display:block;height:100%;border-radius:99px;transition:width .35s ease}
+.balance .fine{font-size:.7rem;color:var(--sub);line-height:1.6;margin:-4px 0 0}
+
+/* 応援キャラ */
+.cheer{background:none;box-shadow:none;padding:4px 4px 0;gap:10px;color:var(--ink);margin-bottom:14px}
+.cheer .fig{width:88px}
+.cheer .fig img{width:88px;height:88px}
+.cheer .nm{font-size:.68rem;font-weight:700;letter-spacing:.1em;opacity:1;color:var(--sub)}
+.cheer .say{background:var(--card);border:1px solid var(--line);border-radius:18px 18px 18px 4px;box-shadow:none;
+  padding:12px 14px;font-size:.9rem;line-height:1.75;margin-bottom:22px}
+.cheer .say::after{display:none}
+.cheer .say b{color:var(--accent)}
+
+/* 体重 */
+.wcard{display:flex;align-items:center;gap:14px;padding:16px 20px}
+.wcard .wl{flex:1;min-width:0;display:grid;gap:2px}
+.wrow .lb{font-size:.8rem;letter-spacing:.12em;color:var(--sub)}
+.wrow{display:grid;gap:2px}
+.wrow .in{display:flex;align-items:baseline;gap:4px}
+.wrow input::-webkit-inner-spin-button,.wrow input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.wrow input{-moz-appearance:textfield;appearance:textfield;flex:none;width:4.4ch;text-align:left;font-family:var(--f-num);font-weight:600;font-size:2.5rem;line-height:1.05;padding:0}
+.wrow .diff{font-size:.76rem;font-weight:700;color:var(--sub)}
+.wrow .diff.dn{color:var(--minus)}
+.spark{display:grid;justify-items:end;gap:4px;font-size:.7rem;color:var(--sub)}
+
+/* 食事の枠 */
+.share{display:flex;gap:3px;height:8px;margin:-2px 4px 14px}
+.share i{border-radius:99px;min-width:4px}
+.slot{margin-bottom:14px}
+.slot .slot-head{padding:14px 16px 10px;gap:12px}
+.slot-head .sic{width:36px;height:36px;border-radius:12px;background:var(--in-w);color:var(--in);display:grid;place-items:center;flex:none}
+.slot-head .sic svg{width:20px;height:20px}
+.slot-head .sw{width:8px;height:8px;border-radius:50%;flex:none;margin-left:-4px}
+.slot-head .t{font-size:1rem}
+.slot-head .k{font-size:.82rem}
+.slot-head .k b{font-family:var(--f-num);font-weight:600;font-size:1rem;color:var(--ink);margin-right:3px}
+.slot .item:first-of-type{border-top:1px solid var(--line2)}
+
+/* 内訳 */
+.stack{display:flex;gap:3px;height:14px;margin-bottom:14px}
+.stack i{border-radius:4px;min-width:4px}
+.stack i:first-child{border-radius:99px 4px 4px 99px}
+.stack i:last-child{border-radius:4px 99px 99px 4px}
+.kv{align-items:center;gap:10px;font-size:.9rem;padding:6px 0}
+.kv .sq{width:10px;height:10px;border-radius:3px;flex:none}
+.kv span:first-child{color:var(--ink)}
+.kv .lab{flex:1}
+.kv small{color:var(--sub);font-size:.76rem;margin-left:6px}
+.kv.tot span:first-child{color:var(--sub);flex:none;white-space:nowrap}
+.kv.tot b{text-align:right}
+
+/* タブバー */
+nav.tabs{background:color-mix(in srgb, var(--card) 92%, transparent);border-top-color:var(--line);padding:8px 8px env(safe-area-inset-bottom)}
+nav.tabs button{padding:0 0 8px;gap:3px;font-size:.7rem;min-height:56px}
+nav.tabs button .ic{width:56px;height:30px;border-radius:99px;display:grid;place-items:center}
+nav.tabs button .ic svg{width:22px;height:22px}
+nav.tabs button.on{color:var(--accent)}
+nav.tabs button.on .ic{background:var(--accent-w)}
+
+/* シート */
+.mask{background:rgba(31,29,26,.45)}
+.sheet{border-radius:28px 28px 0 0}
+.sheet .grab{width:40px;height:5px;margin:10px auto 4px}
+.sheet .sh{padding:8px 12px 12px 20px}
+.sheet .sh .ti{font-family:var(--f-head);font-weight:800;font-size:1.3rem;letter-spacing:.04em}
+.sheet .sh .cl{min-height:44px;padding:0 10px;color:var(--accent)}
+.seg{margin:0 16px 14px;padding:4px;border-radius:14px}
+.seg button{min-height:40px;border-radius:10px;font-size:.84rem;padding:0}
+.seg button.on{box-shadow:0 1px 2px rgba(31,29,26,.12)}
+.sbody{padding:0 16px 18px}
+.srch{min-height:48px;border-radius:14px;padding:0 14px}
+.pick{min-height:58px;border-bottom-color:var(--line2);gap:12px}
+.pick .kc{color:var(--ink);font-size:1rem}
+.pick .st{width:36px;height:36px;background:var(--in-w);color:var(--in);font-size:1.15rem;font-weight:700}
+.qty{gap:6px}
+.qty button{min-height:38px;padding:0;border-radius:99px;background:transparent;border:1px solid var(--line);color:var(--ink);font-family:var(--f-num);font-weight:600;font-size:.95rem}
+.qty button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.fld input,.fld select{min-height:48px;border-radius:12px}
+.btn{min-height:52px;border-radius:99px;background:var(--in);color:var(--on-accent);font-weight:700}
+.btn.sub{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
+.btn.warn{background:var(--bg);color:var(--plus);border:1px solid var(--line)}
+.step .no{width:24px;height:24px;left:-13px;background:var(--accent);color:var(--on-accent);font-family:var(--f-num);font-size:.8rem}
+textarea.ta{border-radius:12px}
+.toast{background:var(--ink);color:var(--bg)}
+
+/* きろく */
+.stat{gap:8px;text-align:left}
+.stat>div{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px 12px;display:flex;flex-direction:column-reverse;gap:4px;justify-content:flex-end}
+.stat div b{font-size:1.6rem;line-height:1.1}
+.stat div span{font-size:.68rem;font-weight:700;line-height:1.45}
+.stat-wrap{background:none;border:none;padding:0}
+.hrow{min-height:58px;border-bottom-color:var(--line2);padding:8px 16px}
+.hrow .bal{font-size:1.05rem}
+.help{font-size:.82rem}
+
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -244,11 +427,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 
 <header class="top" id="top">
   <div class="wrap">
-    <div class="app-title">カロリー帳</div>
+    <div class="brand"><span class="seal" aria-hidden="true">帳</span><span class="wm">カロリー帳</span><span class="chip" id="dayCount"></span></div>
     <div class="datebar" id="datebar">
-      <button class="navbtn" id="prevD" aria-label="前の日">‹</button>
+      <button class="navbtn" id="prevD" aria-label="前の日"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
       <button class="d" id="dLabel" aria-label="日付を選ぶ">—</button>
-      <button class="navbtn" id="nextD" aria-label="次の日">›</button>
+      <button class="navbtn" id="nextD" aria-label="次の日"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
     </div>
   </div>
 </header>
@@ -256,10 +439,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <main class="wrap" id="main"></main>
 
 <nav class="tabs">
-  <button data-tab="today" class="on"><span class="ic">📝</span>きょう</button>
-  <button data-tab="hist"><span class="ic">📈</span>きろく</button>
-  <button data-tab="fav"><span class="ic">⭐</span>定番</button>
-  <button data-tab="set"><span class="ic">⚙️</span>設定</button>
+  <button data-tab="today" class="on"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6zM6 3v18M10 8h5M10 12h5"/></svg></span>きょう</button>
+  <button data-tab="hist"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V11M10 20V5M16 20v-6M3 20h18"/></svg></span>きろく</button>
+  <button data-tab="fav"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg></span>定番</button>
+  <button data-tab="set"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></span>設定</button>
 </nav>
 
 <div class="mask" id="mask"></div>
@@ -964,6 +1147,15 @@ const CHARA_IMG={
   gentle:"chara/karon-gentle.png",
   worry:"chara/karon-worry.png"
 };
+const ICON={
+  breakfast:'<path d="M12 3v3M5.6 7.6L7 9M18.4 7.6L17 9M3 17h18M7 17a5 5 0 0 1 10 0M8 21h8"/>',
+  lunch:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  dinner:'<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+  snack:'<path d="M4 9h13v4a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10.5h1.5a2.5 2.5 0 0 1 0 5H16.5"/><path d="M8 3.5c0 1.5 1 1.5 1 3M12 3.5c0 1.5 1 1.5 1 3"/>'
+};
+const svgI=(d,w)=>`<svg width="${w||20}" height="${w||20}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const X_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const PLUS_SVG='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
 function cheerHTML(k){
   if(!DB.profile.cheer) return "";
   const c=cheerOf(k);
@@ -982,6 +1174,7 @@ const datebar=document.getElementById("datebar");
 
 function render(){
   document.getElementById("nextD").disabled=cur>=todayKey();
+  const nDays=allKeys().length; document.getElementById("dayCount").textContent=nDays?"記録 "+nDays+"日":"";
   document.querySelectorAll("nav.tabs button").forEach(b=>b.classList.toggle("on",b.dataset.tab===tab));
   document.getElementById("top").classList.toggle("hide", tab!=="today");
   if(tab==="today"){ dLabel.innerHTML=labelOf(cur)+(cur===todayKey()?'<small>きょう · 日付を選択</small>':'<small>日付を選択 · きょうへ戻る</small>'); renderToday(); }
@@ -1007,23 +1200,25 @@ function renderToday(){
       <button class="btn" onclick="go('set')">設定を開く</button>
     </div>`;
   }else{
-    h+=`<div class="card balance">
-      <div class="lbl">${cur===todayKey()?"きょう":"この日"}の収支（記録した摂取 − 1日の推定消費）</div>
-      <div class="num" style="color:${balColor}">${d.meals.length?(t.bal>0?"+":"")+t.bal:"—"}<span class="u">kcal</span></div>
+    const prog = !d.meals.length||t.bal>=0 ? 0 : Math.min(1, -t.bal/Math.max(1,p.deficit));
+    h+=`<section class="card balance" aria-label="収支">
+      <div class="bhead"><span class="lbl">${cur===todayKey()?"きょう":"この日"}の収支</span><span class="lbl2">記録した摂取 − 推定消費</span></div>
+      <div class="num" style="color:${balColor}">${d.meals.length?(t.bal>0?"+":t.bal<0?"−":"")+Math.abs(t.bal).toLocaleString():"—"}<span class="u">kcal</span></div>
       <div class="note">${d.meals.length?balNote(t.bal,p.deficit):"食事を記録すると収支の目安が出ます"}</div>
-      <div class="bars">
-        <div class="barrow"><span class="cap">摂取</span><span class="track"><i style="width:${t.inK/maxK*100}%;background:var(--in)"></i></span><span class="val">${t.inK}</span></div>
-        <div class="barrow"><span class="cap">消費</span><span class="track"><i style="width:${t.outK/maxK*100}%;background:var(--out)"></i></span><span class="val">${t.outK}</span></div>
-      </div>
+      <div class="meter" aria-hidden="true"><i style="width:${prog*100}%;background:${balColor}"></i><b></b></div>
       <div class="goalbar">
-        <span>目標は 1日 −${p.deficit} kcal</span>
         <span>${!d.meals.length?"食事は未記録":
           tooMuch?'<b style="color:var(--plus)">減らしすぎ</b>':
-          t.bal<=-p.deficit?'<b style="color:var(--minus)">達成 ✓</b>':
-          'あと <b>'+(t.bal+p.deficit)+'</b> kcal'}</span>
+          t.bal<=-p.deficit?'<b style="color:var(--minus)">目標達成 ✓</b>':
+          'あと <b>'+(t.bal+p.deficit)+'</b> kcal で目標'}</span>
+        <span>目標 −${p.deficit} / 日</span>
       </div>
-      <div class="note" style="font-size:.68rem;opacity:.7;margin-top:9px">食事の入力途中は暫定値です。消費カロリーは推定です。</div>
-    </div>`;
+      <div class="duo">
+        <div><span class="cap"><i style="background:var(--in)"></i>食べた</span><span class="v">${t.inK.toLocaleString()}</span><span class="tr"><i style="width:${t.inK/maxK*100}%;background:var(--in)"></i></span></div>
+        <div><span class="cap"><i style="background:var(--out)"></i>使った（推定）</span><span class="v">${t.outK.toLocaleString()}</span><span class="tr"><i style="width:${t.outK/maxK*100}%;background:var(--out)"></i></span></div>
+      </div>
+      <p class="fine">食事の入力途中は暫定値です。消費カロリーは推定です。</p>
+    </section>`;
   }
 
   /* 応援キャラ */
@@ -1032,42 +1227,46 @@ function renderToday(){
   /* 体重 */
   const wv=DB.weights[cur], prev=prevWeight(cur);
   let diff="";
-  if(wv!=null&&prev!=null){ const dv=+(wv-prev.w).toFixed(1); diff=(dv>0?"+":"")+dv+"kg（"+labelShort(prev.k)+"比）"; }
+  let dn=false;
+  if(wv!=null&&prev!=null){ const dv=+(wv-prev.w).toFixed(1); dn=dv<0; diff=(dv>0?"+":dv<0?"−":"±")+Math.abs(dv)+" kg（"+labelShort(prev.k)+"比）"; }
   else if(wv==null){ const lw=weightAt(cur); if(lw) diff="前回 "+lw+"kg"; }
-  h+=`<div class="card"><div class="wrow">
+  h+=`<section class="card wcard" aria-label="体重"><div class="wl wrow">
       <label class="lb" for="wIn">体重</label>
-      <input id="wIn" type="number" inputmode="decimal" step="0.1" placeholder="—" value="${wv!=null?wv:""}">
-      <span class="u">kg</span>
-    </div>${diff?`<div class="diff" style="text-align:right;margin-top:2px">${diff}</div>`:""}</div>`;
+      <span class="in"><input id="wIn" type="number" inputmode="decimal" step="0.1" placeholder="—" value="${wv!=null?wv:""}"><span class="u">kg</span></span>
+      ${diff?`<span class="diff${dn?" dn":""}">${diff}</span>`:""}
+    </div>${weightSpark(cur)}</section>`;
 
   /* 食事 */
-  h+=`<h2 class="sec">食べたもの　${t.inK} kcal</h2><p class="help" style="margin:0 4px 8px">記録した名前をタップすると編集できます</p>`;
-  for(const[sid,sname,ic] of SLOTS){
+  h+=`<div class="sech"><h2 class="sec">食べたもの</h2><span class="tot"><b>${t.inK.toLocaleString()}</b>kcal</span></div>`;
+  const sums=SLOTS.map(([sid])=>d.meals.filter(m=>m.slot===sid).reduce((s,m)=>s+m.kcal,0));
+  if(t.inK>0) h+=`<div class="share" aria-hidden="true">${sums.map((v,i)=>v>0?`<i style="flex:${v};background:var(--share${i+1})"></i>`:"").join("")}</div>`;
+  else h+=`<p class="help" style="margin:-4px 4px 12px">記録した名前をタップすると編集できます</p>`;
+  SLOTS.forEach(([sid,sname],si)=>{
     const items=d.meals.filter(m=>m.slot===sid);
-    const sum=items.reduce((s,m)=>s+m.kcal,0);
-    h+=`<div class="slot"><div class="slot-head"><span>${ic}</span><span class="t">${sname}</span><span class="k">${sum?sum+" kcal":""}</span></div><div class="list">`;
+    const sum=sums[si];
+    h+=`<section class="slot list" aria-label="${sname}"><div class="slot-head"><span class="sic">${svgI(ICON[sid])}</span><span class="t">${sname}</span><span class="k">${sum?`<b>${sum}</b>kcal`:""}</span></div><div>`;
     for(const m of items){
       h+=`<div class="item"><button class="nm" onclick="editEntry('meals','${m.id}')" aria-label="${esc(m.name)}を編集">${esc(m.name)}${m.q&&m.q!==1?`<em>×${m.q}</em>`:""}</button>
-        <span class="kc">${m.kcal}</span><button class="del" aria-label="${esc(m.name)}を削除" onclick="delMeal('${m.id}')">✕</button></div>`;
+        <span class="kc">${m.kcal}</span><button class="del" aria-label="${esc(m.name)}を削除" onclick="delMeal('${m.id}')">${X_SVG}</button></div>`;
     }
-    h+=`<button class="addrow" onclick="openFood('${sid}')"><span class="p">＋</span>${sname}を追加</button></div></div>`;
-  }
+    h+=`<button class="addrow" onclick="openFood('${sid}')"><span class="p">${PLUS_SVG}</span>${sname}を追加</button></div></section>`;
+  });
 
   /* 運動 */
-  h+=`<h2 class="sec">運動　${t.exK} kcal</h2><div class="list">`;
+  h+=`<div class="sech"><h2 class="sec">運動</h2><span class="tot"><b>${t.exK}</b>kcal</span></div><div class="list">`;
   for(const e of d.exs){
     h+=`<div class="item"><button class="nm" onclick="editEntry('exs','${e.id}')" aria-label="${esc(e.name)}を編集">${esc(e.name)}<em>${e.min}分</em></button>
-      <span class="kc">${exKcal(e.mets,e.min,cur)}</span><button class="del" aria-label="${esc(e.name)}を削除" onclick="delEx('${e.id}')">✕</button></div>`;
+      <span class="kc">${exKcal(e.mets,e.min,cur)}</span><button class="del" aria-label="${esc(e.name)}を削除" onclick="delEx('${e.id}')">${X_SVG}</button></div>`;
   }
-  h+=`<button class="addrow" onclick="openEx()"><span class="p">＋</span>運動を追加</button></div>`;
+  h+=`<button class="addrow ex" onclick="openEx()"><span class="p">${PLUS_SVG}</span>運動を追加</button></div>`;
 
   /* 消費の内訳 */
   if(t.ready){
-    h+=`<h2 class="sec">消費の内訳</h2><div class="card">
-      <div class="kv"><span>基礎代謝（寝ていても使う分）</span><b>${t.bmr}</b></div>
-      <div class="kv"><span>生活の活動（×${DB.profile.activity.toFixed(2)}）</span><b>${t.life}</b></div>
-      <div class="kv"><span>運動</span><b>${t.exK}</b></div>
-      <div class="kv tot"><span>合計</span><b>${t.outK} kcal</b></div>
+    h+=`<div class="sech"><h2 class="sec">使った分の内訳</h2><span class="tot"><b>${t.outK.toLocaleString()}</b>kcal</span></div><div class="card">
+      <div class="stack" aria-hidden="true"><i style="flex:${t.bmr};background:var(--out)"></i><i style="flex:${Math.max(t.life,1)};background:var(--out2)"></i>${t.exK?`<i style="flex:${t.exK};background:var(--out3)"></i>`:""}</div>
+      <div class="kv"><i class="sq" style="background:var(--out)"></i><span class="lab">基礎代謝<small>寝ていても使う分</small></span><b>${t.bmr.toLocaleString()}</b></div>
+      <div class="kv"><i class="sq" style="background:var(--out2)"></i><span class="lab">生活の活動<small>×${DB.profile.activity.toFixed(2)}</small></span><b>${t.life.toLocaleString()}</b></div>
+      <div class="kv"><i class="sq" style="background:var(--out3)"></i><span class="lab">運動</span><b>${t.exK}</b></div>
     </div>`;
   }
   h+=`<div style="height:10px"></div>`;
@@ -1081,6 +1280,17 @@ function renderToday(){
     else DB.weights[cur]=Math.round(v*10)/10;
     save(); render();
   });
+}
+function weightSpark(k){
+  const ks=Object.keys(DB.weights).filter(x=>x<=k).sort().slice(-7);
+  if(ks.length<2) return "";
+  const vs=ks.map(x=>DB.weights[x]);
+  const lo=Math.min(...vs), hi=Math.max(...vs), r=Math.max(hi-lo,0.4);
+  const pts=vs.map((v,i)=>[2+i*96/(vs.length-1), 4+(hi-v)/r*28]);
+  const last=pts[pts.length-1];
+  return `<div class="spark" aria-hidden="true"><svg width="104" height="40" viewBox="0 0 104 40" fill="none">
+    <polyline points="${pts.map(p=>p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ")}" stroke="var(--out3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4" fill="var(--out)"/></svg><span>最近${ks.length}回</span></div>`;
 }
 function balNote(bal,goal){
   if(bal<=-goal){
@@ -1104,7 +1314,7 @@ function labelShort(k){ const d=dateOf(k); return (d.getMonth()+1)+"/"+d.getDate
 /* ---------- ② きろく（履歴） ---------- */
 function renderHist(){
   const keys=allKeys();
-  let h=`<div style="height:calc(env(safe-area-inset-top) + 14px)"></div>`;
+  let h=`<header class="pagehead"><small>RECORD</small><h1>きろく</h1></header>`;
 
   /* まとめ */
   const last7=keys.filter(k=>k>=shiftDay(todayKey(),-6)&&k<=todayKey()&&day(k).meals.length);
@@ -1112,11 +1322,11 @@ function renderHist(){
   const avg=bals.length?Math.round(bals.reduce((s,t)=>s+t.bal,0)/bals.length):null;
   const ws=Object.keys(DB.weights).sort();
   const w0=ws.length?DB.weights[ws[0]]:null, w1=ws.length?DB.weights[ws[ws.length-1]]:null;
-  h+=`<div class="card"><div class="stat">
-     <div><b style="color:${avg!=null&&avg<=0?'var(--minus)':'var(--plus)'}">${avg!=null?(avg>0?"+":"")+avg:"—"}</b><span>直近7日・食事記録${bals.length}日の平均 kcal</span></div>
-     <div><b>${w1!=null?w1:"—"}</b><span>いまの体重 kg</span></div>
-     <div><b style="color:${w0!=null&&w1<=w0?'var(--minus)':'var(--plus)'}">${(w0!=null&&w1!=null)?((w1-w0>0?"+":"")+ (Math.round((w1-w0)*10)/10)):"—"}</b><span>記録開始から</span></div>
-   </div></div>`;
+  h+=`<div class="stat" style="margin-bottom:12px">
+     <div><b style="color:${avg!=null&&avg<=0?'var(--minus)':'var(--plus)'}">${avg!=null?(avg>0?"+":"")+avg:"—"}</b><span>7日の平均収支（${bals.length}日分）</span></div>
+     <div><b>${w1!=null?w1:"—"}</b><span>いまの体重（kg）</span></div>
+     <div><b style="color:${w0!=null&&w1<=w0?'var(--minus)':'var(--plus)'}">${(w0!=null&&w1!=null)?((w1-w0>0?"+":"")+ (Math.round((w1-w0)*10)/10)):"—"}</b><span>記録開始から（kg）</span></div>
+   </div>`;
 
   h+=`<p class="help" style="margin:0 4px 12px">食事が未記録の日は平均から除外します。入力途中の日は含まれます。</p>`;
   /* 収支グラフ */
@@ -1199,7 +1409,7 @@ function weightChart(){
 
 /* ---------- ③ 定番 ---------- */
 function renderFav(){
-  let h=`<div style="height:calc(env(safe-area-inset-top) + 14px)"></div>`;
+  let h=`<header class="pagehead"><small>FAVORITES</small><h1>定番</h1></header>`;
   h+=`<div class="card help">よく食べるもの・よくする運動を登録しておくと、「きょう」の画面から<b>1タップ</b>で記録できます。</div>`;
 
   h+=`<h2 class="sec">定番の食べもの（${DB.favFoods.length}件）</h2><div class="list">`;
@@ -1208,9 +1418,9 @@ function renderFav(){
     h+=`<div class="item">
       <button class="del" onclick="moveFav('food',${i},-1)" ${i===0?'style="opacity:.25"':''}>↑</button>
       <span class="nm">${esc(f.name)}</span><span class="kc">${f.kcal}</span>
-      <button class="del" onclick="delFav('food','${f.id}')">✕</button></div>`;
+      <button class="del" onclick="delFav('food','${f.id}')" aria-label="削除">${X_SVG}</button></div>`;
   });
-  h+=`<button class="addrow" onclick="openFavEdit('food')"><span class="p">＋</span>定番の食べものを追加</button></div>`;
+  h+=`<button class="addrow" onclick="openFavEdit('food')"><span class="p">${PLUS_SVG}</span>定番の食べものを追加</button></div>`;
 
   h+=`<h2 class="sec">定番の運動（${DB.favExs.length}件）</h2><div class="list">`;
   if(!DB.favExs.length) h+=`<div class="empty">まだありません</div>`;
@@ -1219,9 +1429,9 @@ function renderFav(){
       <button class="del" onclick="moveFav('ex',${i},-1)" ${i===0?'style="opacity:.25"':''}>↑</button>
       <span class="nm">${esc(f.name)}<em>${f.min}分 / ${f.mets}METs</em></span>
       <span class="kc">${exKcal(f.mets,f.min,cur)||"—"}</span>
-      <button class="del" onclick="delFav('ex','${f.id}')">✕</button></div>`;
+      <button class="del" onclick="delFav('ex','${f.id}')" aria-label="削除">${X_SVG}</button></div>`;
   });
-  h+=`<button class="addrow" onclick="openFavEdit('ex')"><span class="p">＋</span>定番の運動を追加</button></div>`;
+  h+=`<button class="addrow" onclick="openFavEdit('ex')"><span class="p">${PLUS_SVG}</span>定番の運動を追加</button></div>`;
   h+=`<div style="height:10px"></div>`;
   main.innerHTML=h;
 }
@@ -1239,7 +1449,7 @@ function delFav(t,id){
 /* ---------- ④ 設定 ---------- */
 function renderSet(){
   const p=DB.profile, b=bmrOf(todayKey()), l=lifeOf(todayKey());
-  let h=`<div style="height:calc(env(safe-area-inset-top) + 14px)"></div>`;
+  let h=`<header class="pagehead"><small>SETTINGS</small><h1>設定</h1></header>`;
 
   h+=`<h2 class="sec">あなたのこと</h2><div class="card">
     <div class="fld"><label>性別（基礎代謝の計算に使います）</label>
@@ -1371,7 +1581,7 @@ function openFood(slot){
   sheetState={kind:"food",slot,mode:DB.favFoods.length?"fav":"search",q:"",qty:1,parsed:null,claimed:null,ans:""};
   openSheet(SLOTS.find(s=>s[0]===slot)[1]+"に追加");
   shSeg.innerHTML=`<div class="seg">
-    <button data-m="fav">⭐定番</button><button data-m="search">🔍さがす</button><button data-m="photo">📷写真</button><button data-m="manual">✏️手入力</button></div>`;
+    <button data-m="fav">定番</button><button data-m="search">さがす</button><button data-m="photo">写真</button><button data-m="manual">手入力</button></div>`;
   shSeg.querySelectorAll("button").forEach(b=>b.onclick=()=>{sheetState.mode=b.dataset.m;sheetState.pick=null;drawFood();});
   drawFood();
 }
@@ -1743,7 +1953,7 @@ function openEx(){
   sheetState={kind:"ex",mode:DB.favExs.length?"fav":"search",q:"",min:30};
   openSheet("運動を追加");
   shSeg.innerHTML=`<div class="seg">
-    <button data-m="fav">⭐ 定番</button><button data-m="search">🔍 さがす</button><button data-m="manual">✏️ 手入力</button></div>`;
+    <button data-m="fav">定番</button><button data-m="search">さがす</button><button data-m="manual">手入力</button></div>`;
   shSeg.querySelectorAll("button").forEach(b=>b.onclick=()=>{sheetState.mode=b.dataset.m;drawEx();});
   drawEx();
 }
@@ -1806,7 +2016,7 @@ function delEx(id){ removeEntry("exs",id); }
 function openFavEdit(kind){
   sheetState={kind:"favedit",t:kind,mode:"search",q:""};
   openSheet(kind==="food"?"定番の食べもの":"定番の運動");
-  shSeg.innerHTML=`<div class="seg"><button data-m="search">🔍 一覧からえらぶ</button><button data-m="manual">✏️ 自分で入れる</button></div>`;
+  shSeg.innerHTML=`<div class="seg"><button data-m="search">一覧からえらぶ</button><button data-m="manual">自分で入れる</button></div>`;
   shSeg.querySelectorAll("button").forEach(b=>b.onclick=()=>{sheetState.mode=b.dataset.m;drawFavEdit();});
   drawFavEdit();
 }
