@@ -166,8 +166,8 @@ nav.tabs button.on{color:var(--accent)}
 .cheer{display:flex;gap:9px;align-items:flex-end;margin-bottom:12px;padding:10px 13px 10px 8px;
   border-radius:var(--r);box-shadow:var(--shadow);color:var(--cheer-ink);
   background:linear-gradient(155deg,var(--cheer-a),var(--cheer-b))}
-.cheer .fig{width:86px;flex:none;text-align:center}
-.cheer .fig img{width:86px;height:86px;display:block;object-fit:contain}
+.cheer .fig{width:94px;flex:none;text-align:center}
+.cheer .fig img{width:94px;height:94px;display:block;object-fit:contain}
 .cheer .nm{display:block;font-size:.62rem;font-weight:800;letter-spacing:.04em;opacity:.55;margin-top:1px}
 .cheer .say{flex:1;min-width:0;background:var(--cheer-bub);border-radius:13px;padding:10px 12px;
   font-size:.86rem;line-height:1.65;position:relative;margin-bottom:14px;
@@ -957,11 +957,19 @@ function cheerOf(k){
   if(t.bal<0) return {exp:"cheer",text:pick(CHEER.cheer,"c").replace("{rest}",t.bal+p.deficit)};
   return {exp:"gentle",text:pick(CHEER.gentle,"g")};
 }
+const CHARA_IMG={
+  smile:"chara/karon-smile.png",
+  cheer:"chara/karon-cheer.png",
+  joy:"chara/karon-joy.png",
+  gentle:"chara/karon-gentle.png",
+  worry:"chara/karon-worry.png"
+};
 function cheerHTML(k){
   if(!DB.profile.cheer) return "";
   const c=cheerOf(k);
+  const image=CHARA_IMG[c.exp]||CHARA_IMG.smile;
   return `<div class="cheer">
-    <div class="fig"><img src="chara/karon.png" alt="" width="86" height="86"><span class="nm">${esc(DB.profile.charaName||"カロン")}</span></div>
+    <div class="fig"><img src="${image}" alt="" width="94" height="94"><span class="nm">${esc(DB.profile.charaName||"カロン")}</span></div>
     <div class="say">${esc(c.text)}</div></div>`;
 }
 
