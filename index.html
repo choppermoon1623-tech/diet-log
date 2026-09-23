@@ -897,11 +897,13 @@ const DEFAULT={
   weights:{},          // "2026-09-22": 70.5
   days:{},             // "2026-09-22": {meals:[...], exs:[...]}
   favFoods:[],
-  favExs:[]
+  favExs:[],
+  mod:{}               // 同期用：「どこを・いつ変えたか」 {"d:2026-09-22":時刻, "w:…", "profile", "favFoods", "favExs"}
 };
 let storageBlocked=false;
 let DB=load();
 let persisted=JSON.stringify(DB);
+let lastSaved=JSON.parse(persisted);   // 前回保存した中身（どこが変わったかを調べる用）
 let saveFailed=false;
 let cur=todayKey();     // 表示中の日
 let tab="today";
@@ -943,9 +945,11 @@ function save(){
   for(const k in DB.days){ const d=DB.days[k]; if(!d.meals.length&&!d.exs.length) delete DB.days[k]; }
   try{
     if(storageBlocked) throw new Error("読み取りエラー");
+    stampChanges(lastSaved);
     localStorage.setItem(KEY,JSON.stringify(DB));
-    persisted=JSON.stringify(DB); saveFailed=false;
+    persisted=JSON.stringify(DB); lastSaved=JSON.parse(persisted); saveFailed=false;
     document.getElementById("saveError").classList.add("hide");
+    if(syncOn()) requestSync(1500);
     return true;
   }catch(e){
     DB=JSON.parse(persisted); saveFailed=true;
@@ -958,6 +962,259 @@ function showSaveError(){
   el.classList.remove("hide");
 }
 function uid(){ return Math.random().toString(36).slice(2,9); }
+
+/* ============================================================
+   Dropbox 同期（スマホとPCで同じ記録を使う）
+   - 記録は Dropbox の /カロリー帳/dietlog_sync.json に置く。
+     obsidian-kit/import_diet.py は dietlog_*.json の一番新しいものを読むので、そのまま取りこめる
+   - DB.mod に「どこを・いつ変えたか」を持つ。単位は 日ごとの食事と運動(d:日付)・体重(w:日付)・設定・定番
+   - 読む → 単位ごとに新しいほうを残して合わせる → 変わっていれば書く。
+     書くときは読んだ rev を渡し、先にほかの端末が書いていたら（409）読み直してやり直す
+   - 消した記録も「消した時刻」が残るので、ほかの端末からよみがえらない
+   - 認証は obsidian-memo と同じ PKCE＋更新トークン。同じ github.io の中なので、
+     Obsidian メモでつないである端末なら、その接続を借りられる
+   ============================================================ */
+const SYNC_PATH="/カロリー帳/dietlog_sync.json";
+function syncLS(k,v){
+  try{
+    const kk="dietlog."+k;
+    if(v===undefined) return localStorage.getItem(kk);
+    if(v===null) localStorage.removeItem(kk); else localStorage.setItem(kk,v);
+  }catch(e){ return null; }
+}
+function syncOn(){ return !storageBlocked&&!!(syncLS("refresh")&&syncLS("appKey")); }
+const syncState={busy:false,again:false,pending:false,timer:null,msg:"",err:false,at:0};
+
+/* キーの順番をそろえた JSON（中身が同じかどうかを比べる用） */
+function canon(v){
+  return JSON.stringify(v,(k,x)=>x&&typeof x==="object"&&!Array.isArray(x)
+    ?Object.fromEntries(Object.keys(x).sort().map(a=>[a,x[a]])):x);
+}
+function unitsOf(db){
+  const u=["profile","favFoods","favExs"];
+  for(const k in db.days){ const d=db.days[k]; if(d.meals.length||d.exs.length) u.push("d:"+k); }
+  for(const k in db.weights) u.push("w:"+k);
+  return u;
+}
+function unitVal(db,u){
+  if(u==="profile"||u==="favFoods"||u==="favExs") return db[u];
+  const k=u.slice(2);
+  if(u[0]==="d"){ const d=db.days[k]; return d&&(d.meals.length||d.exs.length)?d:undefined; }
+  return db.weights[k];
+}
+function setUnit(db,u,v){
+  if(u==="profile"||u==="favFoods"||u==="favExs"){ db[u]=structuredClone(v); return; }
+  const box=u[0]==="d"?db.days:db.weights, k=u.slice(2);
+  if(v===undefined) delete box[k]; else box[k]=structuredClone(v);
+}
+/* 前回保存したときから変わった単位に、いまの時刻をつける（save() から呼ぶ） */
+function stampChanges(prev){
+  if(!DB.mod) DB.mod={};
+  const now=Date.now();
+  for(const u of new Set([...unitsOf(DB),...unitsOf(prev)]))
+    if(canon(unitVal(DB,u))!==canon(unitVal(prev,u))) DB.mod[u]=now;
+}
+/* 手もとと Dropbox を合わせる。単位ごとに、変えた時刻が新しいほうを残す */
+function mergeDB(local,remote,first){
+  const out=structuredClone(local); out.mod={...local.mod};
+  const all=new Set([...unitsOf(local),...unitsOf(remote),...Object.keys(local.mod),...Object.keys(remote.mod)]);
+  for(const u of all){
+    const lt=local.mod[u]||0, rt=remote.mod[u]||0, lv=unitVal(local,u), rv=unitVal(remote,u);
+    if(canon(lv)===canon(rv)){ if(rt>lt) out.mod[u]=rt; continue; }
+    if(rt>lt){ setUnit(out,u,rv); out.mod[u]=rt; }
+    else if(rt===lt) setUnit(out,u,unionUnit(u,lv,rv,first));
+  }
+  return out;
+}
+/* 変えた時刻が同じ（＝どちらも同期をはじめる前からの記録）ときは、消さずに両方を残す。
+   ただしこの端末のはじめての同期（first）では、設定と定番は Dropbox 側に合わせる。
+   新しい端末には最初から「おすすめの定番」が入っているので、そのまま足すと、ほかの端末で消した定番がよみがえる */
+const SEED_NAMES=new Set(seed(structuredClone(DEFAULT)).favFoods.map(x=>x.name).concat(seed(structuredClone(DEFAULT)).favExs.map(x=>x.name)));
+function unionUnit(u,lv,rv,first){
+  if(lv===undefined) return rv;
+  if(rv===undefined) return lv;
+  if(first&&(u==="favFoods"||u==="favExs")){ const n=new Set(rv.map(x=>x.name)); return [...rv,...lv.filter(x=>!n.has(x.name)&&!SEED_NAMES.has(x.name))]; }
+  if(first&&u==="profile") return rv;
+  if(u[0]==="d"){
+    const sig=x=>x.name+"|"+(x.kcal??"")+"|"+(x.slot??"")+"|"+(x.min??"");
+    const add=(a,b)=>{ const ids=new Set(a.map(x=>x.id)), sigs=new Set(a.map(sig)); return [...a,...b.filter(x=>!ids.has(x.id)&&!sigs.has(sig(x)))]; };
+    return {meals:add(lv.meals,rv.meals),exs:add(lv.exs,rv.exs)};
+  }
+  if(u==="favFoods"||u==="favExs"){ const n=new Set(lv.map(x=>x.name)); return [...lv,...rv.filter(x=>!n.has(x.name))]; }
+  if(u==="profile") return lv.age==null||lv.height==null?rv:lv;   // 新しい端末（未設定）は、設定済みのほうに合わせる
+  return lv;
+}
+function pruneDays(db){ for(const k in db.days){ const d=db.days[k]; if(!d.meals.length&&!d.exs.length) delete db.days[k]; } }
+const sheetOpen=()=>sheet.classList.contains("on");
+const typingInMain=()=>{ const a=document.activeElement; return !!a&&main.contains(a)&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName); };
+
+function requestSync(ms){ clearTimeout(syncState.timer); syncState.timer=setTimeout(()=>syncNow(false),ms); }
+async function syncNow(manual){
+  if(!syncOn()) return;
+  if(syncState.busy){ syncState.again=true; return; }
+  // 入力の途中で画面を描き直さないよう、シートを閉じる・入力を終えるまで待つ
+  if(sheetOpen()||typingInMain()){ syncState.pending=true; return; }
+  syncState.busy=true; syncState.msg="同期しています…"; syncState.err=false; refreshSyncUI();
+  try{
+    for(let tries=0;;tries++){
+      const r=await dropboxRead(SYNC_PATH);
+      let remote=null;
+      if(r){
+        try{ remote=validateDB(JSON.parse(r.text)); }
+        catch(e){ throw new Error("Dropboxの同期ファイルを読めません（"+e.message+"）。ファイルには手をつけていません"); }
+      }
+      if(sheetOpen()||typingInMain()){ syncState.pending=true; break; }   // 読んでいるあいだに入力がはじまった
+      pruneDays(DB);
+      const merged=remote?mergeDB(DB,remote,!syncLS("at")):structuredClone(DB);
+      const gotNew=canon({...merged,mod:0})!==canon({...DB,mod:0});
+      // 比べる・書き出すのは描き直す前に（描き直すと、表示中の日の空の記録ができるため）
+      const needPush=!remote||canon(merged)!==canon(remote), text=JSON.stringify(merged,null,1);
+      if(canon(merged)!==canon(DB)) applyMerged(merged);
+      if(needPush){
+        try{ await dropboxWrite(SYNC_PATH,text,r?r.rev:null); }
+        catch(e){ if(e.conflict&&tries<3) continue; throw e; }
+      }
+      syncState.at=Date.now(); syncLS("at",String(syncState.at)); syncState.msg="";
+      if(gotNew) toast("ほかの端末の記録を取りこみました");
+      else if(manual) toast("同期しました");
+      break;
+    }
+  }catch(e){
+    syncState.err=true; syncState.msg=String(e.message||e).slice(0,200);
+    if(manual) toast("同期できませんでした");
+  }finally{
+    syncState.busy=false; refreshSyncUI();
+    if(syncState.again){ syncState.again=false; requestSync(300); }
+  }
+}
+/* 合わせた結果を手もとに保存する（時刻はつけ直さない） */
+function applyMerged(m){
+  localStorage.setItem(KEY,JSON.stringify(m));
+  DB=m; persisted=JSON.stringify(DB); lastSaved=JSON.parse(persisted);
+  render();
+}
+
+/* ---- Dropbox の認証（obsidian-memo と同じ作り） ---- */
+const redirectUri=()=>location.origin+location.pathname.replace(/index\.html$/,"");
+function b64url(bytes){ let s=""; bytes.forEach(b=>s+=String.fromCharCode(b)); return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+async function challengeOf(v){ return b64url(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v)))); }
+let dbxToken=null, dbxExp=0;
+async function token(){
+  if(dbxToken&&Date.now()<dbxExp-60000) return dbxToken;
+  const refresh=syncLS("refresh"), key=syncLS("appKey");
+  if(!refresh||!key) throw new Error("Dropboxにつながっていません");
+  const res=await fetch("https://api.dropboxapi.com/oauth2/token",{method:"POST",
+    body:new URLSearchParams({grant_type:"refresh_token",refresh_token:refresh,client_id:key})});
+  if(!res.ok){
+    if(res.status===400){ syncLS("refresh",null); throw new Error("つなぎ直しが必要です（設定から、もう一度つないでください）"); }
+    throw new Error("Dropboxの認証に失敗しました（"+res.status+"）");
+  }
+  const j=await res.json(); dbxToken=j.access_token; dbxExp=Date.now()+(j.expires_in||14400)*1000;
+  return dbxToken;
+}
+async function startAuth(){
+  const key=(document.getElementById("dbxKey")?.value||"").trim();
+  if(!/^[a-z0-9]{8,32}$/i.test(key)){ toast("App key を貼ってください"); return; }
+  if(!crypto.subtle){ toast("https のページで開いてください"); return; }
+  syncLS("appKey",key);
+  const a=new Uint8Array(48); crypto.getRandomValues(a); const verifier=b64url(a);
+  sessionStorage.setItem("dietlog.verifier",verifier);
+  const u=new URL("https://www.dropbox.com/oauth2/authorize");
+  u.searchParams.set("client_id",key); u.searchParams.set("response_type","code");
+  u.searchParams.set("code_challenge",await challengeOf(verifier)); u.searchParams.set("code_challenge_method","S256");
+  u.searchParams.set("token_access_type","offline"); u.searchParams.set("scope","files.content.read files.content.write");
+  u.searchParams.set("redirect_uri",redirectUri());
+  location.href=u.toString();
+}
+/* Dropbox から ?code=… で戻ってきたときの受け取り。つながったら true */
+async function finishAuth(){
+  const p=new URLSearchParams(location.search);
+  if(!p.get("code")&&!p.get("error")) return false;
+  history.replaceState(null,"",redirectUri());
+  if(p.get("error")){ toast("つなげませんでした："+(p.get("error_description")||p.get("error"))); return false; }
+  const verifier=sessionStorage.getItem("dietlog.verifier"); sessionStorage.removeItem("dietlog.verifier");
+  if(!verifier){ toast("もう一度「つなぐ」からやり直してください"); return false; }
+  const res=await fetch("https://api.dropboxapi.com/oauth2/token",{method:"POST",body:new URLSearchParams({
+    grant_type:"authorization_code",code:p.get("code"),code_verifier:verifier,client_id:syncLS("appKey")||"",redirect_uri:redirectUri()})});
+  if(!res.ok){ toast("つなげませんでした（"+res.status+"）"); return false; }
+  const j=await res.json();
+  if(!j.refresh_token){ toast("つなげませんでした。App key を確かめてください"); return false; }
+  syncLS("refresh",j.refresh_token); dbxToken=j.access_token; dbxExp=Date.now()+(j.expires_in||14400)*1000;
+  return true;
+}
+/* 同じ github.io の Obsidian メモでつないであれば、その接続を借りる */
+function obsmemoLink(){
+  try{ const k=localStorage.getItem("obsmemo.appKey"), r=localStorage.getItem("obsmemo.refresh"); return k&&r?{k,r}:null; }catch(e){ return null; }
+}
+function useObsmemo(){
+  const o=obsmemoLink(); if(!o) return;
+  syncLS("appKey",o.k); syncLS("refresh",o.r); dbxToken=null;
+  refreshSyncUI(); syncNow(true);
+}
+function unlinkSync(){
+  if(!confirm("この端末の同期をやめます。記録はこの端末とDropboxの両方に残ります。よろしいですか？")) return;
+  syncLS("refresh",null); syncLS("at",null); dbxToken=null; syncState.msg=""; syncState.err=false;
+  refreshSyncUI(); toast("同期をやめました");
+}
+
+/* ---- Dropbox のファイル操作 ---- */
+// Dropbox-API-Arg は HTTP ヘッダなので、日本語は \uXXXX に逃がす
+const apiArg=o=>JSON.stringify(o).replace(/[\u007f-￿]/g,c=>"\\u"+c.charCodeAt(0).toString(16).padStart(4,"0"));
+async function dropboxRead(path){
+  const res=await fetch("https://content.dropboxapi.com/2/files/download",{method:"POST",
+    headers:{Authorization:"Bearer "+await token(),"Dropbox-API-Arg":apiArg({path})}});
+  if(res.status===409){ const t=await res.text(); if(t.includes("not_found")) return null; throw new Error("Dropboxから読めません："+t.slice(0,120)); }
+  if(!res.ok) throw new Error("Dropboxから読めません（"+res.status+"）");
+  let rev=null;
+  try{ rev=JSON.parse(res.headers.get("dropbox-api-result")||"{}").rev||null; }catch(e){}
+  const text=await res.text();
+  if(!rev){   // ヘッダが読めない環境向けの保険
+    const m=await fetch("https://api.dropboxapi.com/2/files/get_metadata",{method:"POST",
+      headers:{Authorization:"Bearer "+await token(),"Content-Type":"application/json"},body:JSON.stringify({path})});
+    if(m.ok) rev=(await m.json()).rev||null;
+  }
+  return {text,rev};
+}
+async function dropboxWrite(path,text,rev){
+  const arg={path,autorename:false,mute:true,mode:rev?{".tag":"update",update:rev}:"add"};
+  const res=await fetch("https://content.dropboxapi.com/2/files/upload",{method:"POST",
+    headers:{Authorization:"Bearer "+await token(),"Dropbox-API-Arg":apiArg(arg),"Content-Type":"application/octet-stream"},
+    body:new Blob([text],{type:"application/octet-stream"})});
+  if(res.ok) return;
+  const t=await res.text(), err=new Error("Dropboxに書けません："+t.slice(0,120));
+  err.conflict=res.status===409&&t.includes("conflict");   // ほかの端末が先に書いた
+  throw err;
+}
+
+/* ---- 設定画面の同期カード ---- */
+function syncCardHTML(){
+  const https=location.protocol==="https:"||location.hostname==="localhost";
+  if(syncOn()){
+    const at=syncState.at||Number(syncLS("at"))||0;
+    const when=at?new Date(at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):"まだ";
+    return `<div class="help"><b style="color:var(--accent)">● つながっています</b>　最後に同期：${when}</div>
+      ${syncState.msg?`<div class="help" style="margin-top:6px;${syncState.err?"color:var(--plus)":""}">${esc(syncState.msg)}</div>`:""}
+      <button class="btn" style="margin-top:10px" onclick="syncNow(true)"${syncState.busy?" disabled":""}>🔄 いま同期する</button>
+      <button class="btn sub" style="margin-top:8px" onclick="unlinkSync()">この端末の同期をやめる</button>
+      <div class="help" style="margin-top:10px">開いたとき・記録したとき・画面に戻ったときに、自動で合わせます。置き場所は Dropbox の <code>/カロリー帳/dietlog_sync.json</code>。スマホとPCで同じ日を同時に直したときは、あとから直したほうが残ります。</div>`;
+  }
+  if(!https) return `<div class="help">同期は公開ページ（https://choppermoon1623-tech.github.io/diet-log/）で開いたときだけ使えます。</div>`;
+  const o=obsmemoLink();
+  return `<div class="help" style="margin-bottom:10px">Dropbox に記録を置いて、スマホとPCで同じ記録を使えるようにします。記録はあなたのDropboxにだけ置かれます。<b>使う端末ごとに1回</b>つないでください。</div>
+    ${o?`<button class="btn" onclick="useObsmemo()">🔗 Obsidian メモの接続を使ってつなぐ</button>
+      <div class="help" style="margin:6px 0 12px">この端末では Obsidian メモが Dropbox につながっているので、ボタン1つでつなげます。</div>`:""}
+    <details${o?"":" open"}><summary>App key でつなぐ</summary><div class="help">
+      <ol style="padding-left:1.2em;margin:6px 0">
+        <li><a href="https://www.dropbox.com/developers/apps" target="_blank" rel="noopener">Dropbox App Console</a> で、Obsidian メモ用に作ったアプリを開く（新しく作るなら「Scoped access」→「Full Dropbox」）</li>
+        <li>Settings の <b>Redirect URIs</b> に <code>https://choppermoon1623-tech.github.io/diet-log/</code> を Add（最初の1回だけ）</li>
+        <li>Permissions で <code>files.content.read</code> と <code>files.content.write</code> にチェック</li>
+        <li>Settings の <b>App key</b> を下に貼って「つなぐ」→ Dropbox の画面で「許可」</li>
+      </ol></div>
+      <div class="fld" style="margin-top:8px"><label for="dbxKey">App key</label><input id="dbxKey" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(syncLS("appKey")||"")}"></div>
+      <button class="btn" onclick="startAuth()">Dropbox とつなぐ</button>
+    </details>`;
+}
+function refreshSyncUI(){ const el=document.getElementById("syncCard"); if(el) el.innerHTML=syncCardHTML(); }
 
 /* Shared validation for existing v1 data and imported backups. */
 function validDate(k){return /^\d{4}-\d{2}-\d{2}$/.test(k)&&keyOf(dateOf(k))===k;}
@@ -981,7 +1238,8 @@ function validateDB(src){
   validateProfile(d.profile);
   const row=(r,kind)=>{
     if(!object(r)||typeof r.name!=="string"||!r.name.trim()||r.name.length>300) fail();
-    const out={id:uid(),name:r.name.trim()};
+    // id は同期で同じ記録を見分けるのに使うので、正しい形ならそのまま残す
+    const out={id:typeof r.id==="string"&&/^[\w-]{1,40}$/.test(r.id)?r.id:uid(),name:r.name.trim()};
     if(kind==="meal"||kind==="food"){
       if(!validNumber(r.kcal,0,50000)) fail();out.kcal=r.kcal;
       if(kind==="meal"){
@@ -1004,6 +1262,8 @@ function validateDB(src){
   }
   if(!Array.isArray(src.favFoods)||!Array.isArray(src.favExs)) fail();
   d.favFoods=src.favFoods.map(x=>row(x,"food"));d.favExs=src.favExs.map(x=>row(x,"ex"));
+  if(object(src.mod)) for(const [u,t] of Object.entries(src.mod))
+    if(/^(profile|favFoods|favExs|[dw]:\d{4}-\d{2}-\d{2})$/.test(u)&&validNumber(t,0,1e14)) d.mod[u]=t;
   return d;
 }
 
@@ -1607,8 +1867,10 @@ function renderSet(){
     <button class="btn" style="margin-top:10px" onclick="saveCheer()">保存する</button>
   </div>`;
 
+  h+=`<h2 class="sec">スマホとPCで同期（Dropbox）</h2><div class="card" id="syncCard">${syncCardHTML()}</div>`;
+
   h+=`<h2 class="sec">バックアップ</h2><div class="card">
-    <div class="help" style="margin-bottom:10px">記録は<b>このブラウザ内</b>に保存されます。別の端末への自動同期はありません。定期的にファイルを書き出し、端末やDropboxなどに保管してください。</div>
+    <div class="help" style="margin-bottom:10px">記録は<b>このブラウザ内</b>に保存されます。上の「同期」をつなぐと、Dropbox にも自動で置かれます。つないでいないときは、定期的にファイルを書き出して保管してください。</div>
     <button class="btn" onclick="expo()">📤 バックアップを書き出す</button>
     <button class="btn sub" style="margin-top:8px" onclick="document.getElementById('fileIn').click()">📥 読みこむ</button>
     <details style="margin-top:14px"><summary>やり方（iPhone）</summary>
@@ -1662,7 +1924,7 @@ function saveCheer(){
 }
 function wipe(){
   if(!confirm("すべての記録（食事・運動・体重・定番）を消します。元に戻せません。よろしいですか？")) return;
-  if(!confirm("本当に消しますか？")) return;
+  if(!confirm(syncOn()?"Dropbox で同期しているので、ほかの端末からも消えます。本当に消しますか？":"本当に消しますか？")) return;
   const wasBlocked=storageBlocked;
   storageBlocked=false; DB=seed(structuredClone(DEFAULT));
   if(!save()){storageBlocked=wasBlocked;render();return;}
@@ -1697,6 +1959,7 @@ function closeSheet(){
   shBody.innerHTML=""; shSeg.innerHTML=""; document.body.style.overflow="";
   main.inert=false; document.querySelector("nav.tabs").inert=false; document.getElementById("top").inert=false;
   if(sheetOpener?.isConnected) sheetOpener.focus();
+  if(syncState.pending){ syncState.pending=false; requestSync(300); }
 }
 document.addEventListener("keydown",e=>{
   if(!sheet.classList.contains("on")) return;
@@ -2300,6 +2563,16 @@ function jumpToDate(){
 window.addEventListener("scroll",()=>{ document.getElementById("top").classList.toggle("scrolled",window.scrollY>4); });
 
 render();
+
+/* ---- 同期のきっかけ：開いたとき・画面に戻ったとき・入力を終えたとき・1分ごと ---- */
+(async()=>{
+  if(await finishAuth().catch(e=>{ toast("つなげませんでした："+e.message); return false; })){ go("set"); toast("Dropbox につながりました"); }
+  syncNow(false);
+})();
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") requestSync(0); });
+window.addEventListener("online",()=>requestSync(0));
+main.addEventListener("focusout",()=>{ if(syncState.pending){ syncState.pending=false; requestSync(800); } });
+setInterval(()=>{ if(document.visibilityState==="visible"&&syncOn()) syncNow(false); },60000);
 if(storageBlocked) showSaveError();
 </script>
 </body>
