@@ -127,7 +127,7 @@ nav.tabs button.on{color:var(--accent)}
 .mask.on{opacity:1;pointer-events:auto}
 .sheet{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--card);
   border-radius:20px 20px 0 0;transform:translateY(102%);transition:transform .26s cubic-bezier(.3,.9,.4,1);
-  max-height:92vh;display:flex;flex-direction:column;
+  max-height:calc(var(--vvh,100vh)*.92);display:flex;flex-direction:column;
   padding-bottom:env(safe-area-inset-bottom)}
 .sheet.on{transform:translateY(0)}
 .sheet .grab{width:38px;height:4px;border-radius:99px;background:var(--line);margin:8px auto 2px;flex:none}
@@ -141,6 +141,10 @@ nav.tabs button.on{color:var(--accent)}
 .srch{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);
   background:var(--bg);margin-bottom:10px}
 .srch:focus{outline:2px solid var(--accent-w);border-color:var(--accent)}
+/* 検索中はシートの高さを固定し、検索欄を上に貼りつける。
+   結果の件数でシートが伸び縮みすると、iPhoneでは入力欄がキーボードの裏へ動き、変換も切れる */
+.sheet:has(.sbody > .srch){height:calc(var(--vvh,100vh)*.92)}
+.sbody > .srch{position:sticky;top:0;z-index:2;box-shadow:0 0 0 6px var(--card)}
 .pick{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:11px 4px;border-bottom:1px solid var(--line)}
 .pick .nm{flex:1;min-width:0;font-size:.94rem}
 .pick .nm small{display:block;color:var(--sub);font-size:.72rem}
@@ -1552,9 +1556,18 @@ const shTitle=document.getElementById("shTitle"), shSeg=document.getElementById(
 let sheetState={};
 
 let sheetOpener=null;
+/* iPhoneはキーボードが出ても画面の高さが変わらず、下につけたシートがキーボードの裏に隠れる。
+   見えている範囲（visualViewport）に合わせて、シートの下端と高さを動かす */
+function fitSheet(){
+  const vv=window.visualViewport; if(!vv) return;
+  const kb=Math.max(0,Math.round(window.innerHeight-vv.height-vv.offsetTop));
+  sheet.style.bottom=kb+"px";
+  sheet.style.setProperty("--vvh",vv.height+"px");
+}
+if(window.visualViewport){ visualViewport.addEventListener("resize",fitSheet); visualViewport.addEventListener("scroll",fitSheet); }
 function openSheet(title){
   sheetOpener=document.activeElement; shTitle.textContent=title;
-  sheet.inert=false; sheet.classList.add("on"); mask.classList.add("on");
+  fitSheet(); sheet.inert=false; sheet.classList.add("on"); mask.classList.add("on");
   main.inert=true; document.querySelector("nav.tabs").inert=true; document.getElementById("top").inert=true;
   document.body.style.overflow="hidden"; document.getElementById("shClose").focus();
 }
@@ -1604,7 +1617,7 @@ function drawFood(){
     drawGramPick(); return;
   }
   else if(st.mode==="search"){
-    h+=`<input class="srch" id="fq" type="search" placeholder="食べもの名・商品名でさがす（例：鶏むね）" value="${esc(st.q)}">`;
+    h+=`<input class="srch" id="fq" type="search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ひらがなのままでOK（例：よーぐると）" value="${esc(st.q)}">`;
     const q=st.q.trim();
     let list=FOODS;
     if(q){ const nq=norm(q); list=FOODS.filter(f=>f[0].includes(q)||f[2].includes(q)||norm(f[0]).includes(nq)); }
@@ -1646,12 +1659,19 @@ function drawFood(){
   }
   setBody(h,"fq");
   const fq=document.getElementById("fq");
-  if(fq){ fq.oninput=()=>{st.q=fq.value; drawFood();}; }
+  if(fq){ liveSearch(fq,st,drawFood); }
 }
 function setQty(q){ sheetState.qty=q; drawFood(); }
 
 /* シートの中身を描き直す。検索欄に入力中なら、検索欄そのものは作り直さず前後だけ差しかえる。
    作り直すと日本語入力の変換中の文字が消える（「k」を打つと再描画で消え、母音が入らない） */
+/* 検索欄の入力。変換中（ひらがなの下線がある間）も結果は追うが、打つたびには描かず少し待つ */
+function liveSearch(el,st,draw){
+  el.oninput=e=>{
+    st.q=el.value; clearTimeout(liveSearch.t);
+    liveSearch.t=setTimeout(()=>{ if(sheetState===st&&el.isConnected) draw(); },e.isComposing?300:120);
+  };
+}
 function setBody(h,keepId){
   const old=document.getElementById(keepId);
   if(!old||old.parentNode!==shBody||document.activeElement!==old){ shBody.innerHTML=h; return; }
@@ -1667,6 +1687,7 @@ function setBody(h,keepId){
 /* ---- 食品成分表の検索 ----
    成分表の名前は「にわとり」「ぶた」「めし」のように、ふだんの言い方と違うことが多い。
    ことばの置きかえ表で寄せてから、スペースで区切った語が全部ふくまれるものを拾う */
+function toKata(s){ return s.replace(/[ぁ-ゖ]/g,c=>String.fromCharCode(c.charCodeAt(0)+0x60)); }
 function norm(s){
   return String(s).normalize("NFKC").toLowerCase()
     .replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60));
@@ -1737,15 +1758,21 @@ async function netSearch(){
   const ac=new AbortController(); const timer=setTimeout(()=>ac.abort(),15000);
   const fields="code,product_name,product_name_ja,brands,nutriments,serving_quantity,serving_size";
   const barcode=/^\d{8,14}$/.test(q.replace(/[\s-]/g,""));
-  const url=barcode
-    ? `https://world.openfoodfacts.org/api/v2/product/${q.replace(/[\s-]/g,"")}.json?fields=${fields}`
-    : `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&json=1&page_size=40&fields=${fields}`;
+  /* 商品名はカタカナが多いので、ひらがなだけの入力（「よーぐると」）はカタカナでも引く */
+  const words=barcode?[q]:[...new Set([q,/^[ぁ-ゖー\s]+$/.test(q)?toKata(q):q])];
+  const urls=barcode
+    ? [`https://world.openfoodfacts.org/api/v2/product/${q.replace(/[\s-]/g,"")}.json?fields=${fields}`]
+    : words.map(w=>`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(w)}&search_simple=1&json=1&page_size=40&fields=${fields}`);
   try{
-    const r=await fetch(url,{signal:ac.signal});
-    if(!r.ok&&!(barcode&&r.status===404)) throw new Error("HTTP "+r.status);
-    const j=await r.json();
-    const raw=barcode?(j.product?[j.product]:[]):(j.products||[]);
-    const items=raw.map(offItem).filter(Boolean);
+    const raw=[];
+    for(const url of urls){
+      const r=await fetch(url,{signal:ac.signal});
+      if(!r.ok&&!(barcode&&r.status===404)) throw new Error("HTTP "+r.status);
+      const j=await r.json();
+      raw.push(...(barcode?(j.product?[j.product]:[]):(j.products||[])));
+    }
+    const seen=new Set();
+    const items=raw.map(offItem).filter(p=>{ if(!p) return false; const k=p.brand+"|"+p.name; if(seen.has(k)) return false; seen.add(k); return true; });
     if(sheetState!==st||st.net.q!==q) return;   // 待っている間に閉じた・ことばを変えた
     st.net={q,state:"done",items};
   }catch(e){
@@ -1972,7 +1999,7 @@ function drawEx(){
     });
   }
   else if(st.mode==="search"){
-    h+=`<input class="srch" id="eq" type="search" placeholder="運動名でさがす（例：歩）" value="${esc(st.q)}">`+mins;
+    h+=`<input class="srch" id="eq" type="search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="運動名でさがす（例：歩）" value="${esc(st.q)}">`+mins;
     let list=EXS; const q=st.q.trim();
     if(q) list=EXS.filter(e=>e[0].includes(q));
     if(!list.length) h+=`<div class="empty">見つかりません</div>`;
@@ -1994,7 +2021,7 @@ function drawEx(){
   }
   setBody(h,"eq");
   const eq=document.getElementById("eq");
-  if(eq){ eq.oninput=()=>{st.q=eq.value; drawEx();}; }
+  if(eq){ liveSearch(eq,st,drawEx); }
 }
 function setMin(m){ sheetState.min=m; drawEx(); }
 function addEx(name,mets,min){
@@ -2025,7 +2052,7 @@ function drawFavEdit(){
   shSeg.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.m===st.mode));
   let h="";
   if(st.mode==="search"){
-    h+=`<input class="srch" id="vq" type="search" placeholder="名前でさがす" value="${esc(st.q)}">`;
+    h+=`<input class="srch" id="vq" type="search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="名前でさがす" value="${esc(st.q)}">`;
     const q=st.q.trim();
     if(st.t==="food"){
       let list=q?FOODS.filter(f=>f[0].includes(q)||f[2].includes(q)):FOODS;
@@ -2052,7 +2079,7 @@ function drawFavEdit(){
   }
   setBody(h,"vq");
   const vq=document.getElementById("vq");
-  if(vq){ vq.oninput=()=>{st.q=vq.value; drawFavEdit();}; }
+  if(vq){ liveSearch(vq,st,drawFavEdit); }
 }
 function addFav(t,name,v){
   if(t==="food") DB.favFoods.push({id:uid(),name,kcal:v,slot:null});
