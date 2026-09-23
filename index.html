@@ -341,6 +341,12 @@ header.top{padding-top:calc(env(safe-area-inset-top) + 14px)}
   padding:12px 14px;font-size:.9rem;line-height:1.75;margin-bottom:22px}
 .cheer .say::after{display:none}
 .cheer .say b{color:var(--accent)}
+/* きょうのひとこと */
+.tip{padding:14px 18px 10px}
+.tip .tk{display:flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;letter-spacing:.08em;color:var(--sub);margin-bottom:6px}
+.tip .tx{font-size:.95rem;line-height:1.75;color:var(--ink)}
+.tip .tx b{color:var(--accent)}
+.tip .nx{display:block;margin:6px 0 0 auto;min-height:40px;padding:0 4px;font-size:.8rem;font-weight:700;color:var(--accent)}
 
 /* 体重 */
 .wcard{display:flex;align-items:center;gap:14px;padding:16px 20px}
@@ -887,7 +893,7 @@ const ACT=[[1.20,"ほとんど座っている","デスクワーク中心・移�
 const KEY="dietLog_v1";
 const DEFAULT={
   version:1,
-  profile:{sex:"male",age:null,height:null,activity:1.30,deficit:400,goalWeight:null,cheer:true,charaName:"カロン"},
+  profile:{sex:"male",age:null,height:null,activity:1.30,deficit:400,goalWeight:null,cheer:true,tips:true,charaName:"カロン"},
   weights:{},          // "2026-09-22": 70.5
   days:{},             // "2026-09-22": {meals:[...], exs:[...]}
   favFoods:[],
@@ -963,6 +969,7 @@ function validateProfile(p){
   if(p.goalWeight!==null&&!validNumber(p.goalWeight,1,500)) throw new Error("目標体重は1〜500kgで入力してください");
   // 応援モードは見た目の設定なので、おかしな値でも弾かずに既定へ寄せる
   p.cheer = p.cheer!==false;
+  p.tips = p.tips!==false;
   p.charaName = (typeof p.charaName==="string"&&p.charaName.trim()) ? p.charaName.trim().slice(0,12) : "カロン";
 }
 function validateDB(src){
@@ -1144,6 +1151,115 @@ function cheerOf(k){
   if(t.bal<0) return {exp:"cheer",text:pick(CHEER.cheer,"c").replace("{rest}",t.bal+p.deficit)};
   return {exp:"gentle",text:pick(CHEER.gentle,"g")};
 }
+/* ============================================================
+   きょうのひとこと（まめ知識・小さなコツ・はげまし）
+   日付で1つ決まり、「つぎのひとこと」で順にめくれる。
+   その日の様子（食べすぎ・減らしすぎ・体重が増えた など）に合うものを最初に出す。
+   数字は目安として一般に言われている範囲にとどめ、言い切りすぎないこと
+   ============================================================ */
+const TIPS={
+  know:[
+    "体脂肪1kgは、およそ<b>7,200kcal</b>ぶん。1日240kcal控えると、1か月で1kgくらいのペースです",
+    "体重は水分だけで<b>1日に1〜2kg</b>くらい上下します。1日の数字より、1週間の流れを見ましょう",
+    "しょっぱい物を食べた翌日は、体が水分をためこんで体重が増えやすくなります。<b>脂肪が増えたわけではありません</b>",
+    "脂質は1gで<b>9kcal</b>、たんぱく質と炭水化物は<b>4kcal</b>。同じ量なら、油の多い料理ほど高くなります",
+    "アルコールは1gで約<b>7kcal</b>。お酒そのものより、いっしょに進むおつまみに気をつけて",
+    "たんぱく質は、消化するときに使うエネルギーが三大栄養素のなかでいちばん多いと言われています",
+    "満腹のサインが脳に届くまで、<b>20分くらい</b>かかると言われます。ゆっくり食べるだけで食べすぎを防げます",
+    "睡眠が足りないと、食欲を高めるホルモンがふえ、満腹を伝えるホルモンが減るという研究があります。<b>よく寝るのもダイエット</b>",
+    "1日の消費カロリーのうち、いちばん大きいのは<b>基礎代謝</b>。何もしなくても使っている分が6割ほどあります",
+    "家事や通勤、立っている時間など「運動じゃない動き」の差は、人によって数百kcalになることもあります",
+    "野菜・きのこ・海藻は食物繊維が多く、かさのわりにカロリーが低いので、おなかが満たされやすい食材です",
+    "野菜から先に食べると、血糖値の上がり方がゆるやかになると言われています",
+    "甘い飲み物は、500mlで<b>200kcal前後</b>のものも。飲み物は「食べた」実感がないぶん見落としがちです",
+    "ドレッシング大さじ1は約60kcal。ノンオイルなら約12kcal。サラダは「かけるもの」で大きく変わります",
+    "から揚げより焼き鳥、焼き鳥より蒸し鶏。同じ鶏でも、<b>調理法</b>でカロリーはかなり変わります",
+    "体重は、朝トイレのあと・食べる前など、<b>同じ条件</b>で量るとブレが小さくなります",
+    "減量が速すぎると、脂肪だけでなく筋肉も落ちやすくなります。ゆっくりのほうが、戻りにくいと言われます",
+    "<b>停滞期</b>はだれにでもあります。体が省エネになったり水分が動いたりして、数字が止まって見える時期です",
+    "食べた物を記録している人ほど、体重が減りやすかったという研究があります。<b>いまやっていることが、まさにそれ</b>です",
+    "筋肉は脂肪より密度が高いので、同じ体重でも筋肉が多いほど体は引きしまって見えます"
+  ],
+  tip:[
+    "今日は、階段を<b>1回だけ</b>選んでみませんか",
+    "おかしは袋から直接ではなく、<b>小皿に出して</b>から。どれだけ食べたかが目に見えます",
+    "甘い飲み物を<b>1本だけ</b>お茶か水に。毎日なら、1か月で数千kcalの差になります",
+    "おなかがすいた気がしたら、まず水を一杯。のどのかわきを空腹と感じていることもあります",
+    "おなかがすいた状態で買い物に行くと、買いすぎやすくなります",
+    "夜のつまみ食いがやめられないときは、<b>早めに歯みがき</b>をしてしまうのも手です",
+    "ひとくち20回かむのを、1食だけ試してみませんか",
+    "「なぜやせたいのか」を1行だけメモしておくと、迷ったときの道しるべになります",
+    "食べる前に写真を1枚。それだけで、何をどれだけ食べるかを意識できます",
+    "テレビやスマホを見ながら食べると、食べた量を感じにくくなります。1食だけ、食事に集中してみて",
+    "たんぱく質を毎食すこしずつ。卵・納豆・豆腐・魚・鶏むねなど、手軽なものからで大丈夫です",
+    "10分歩くだけでも立派な運動です。ひと駅ぶん、ひと回りぶんから"
+  ],
+  heart:[
+    "記録した時点で、もう<b>半分は成功</b>です",
+    "完璧な日より、<b>また戻ってこられること</b>のほうがずっと大事です",
+    "1日で太ることも、1日でやせることもありません。今日の数字は、ただの1日ぶんです",
+    "体重計の数字は、<b>あなたの価値ではありません</b>",
+    "くらべる相手は、ほかの人じゃなくて<b>先月の自分</b>で",
+    "疲れた日は、記録するだけで<b>100点</b>です",
+    "小さな変化も、続けば大きな変化になります",
+    "好きな物を全部がまんしなくていい。量を決めて、ちゃんと楽しみましょう",
+    "「ぜんぶダメにしちゃった」と思ったら、<b>次の1食</b>からやり直せば大丈夫",
+    "ストレスで食べてしまうのは、弱いからではありません。心と体が休みたがっているサインです",
+    "友だちに声をかけるときの言葉で、自分にも話しかけてあげてください",
+    "今日できたことを、1つだけ数えてみませんか",
+    "道のりはまっすぐじゃなくていい。ジグザグでも、前に進んでいます",
+    "休むのも、ダイエットの一部です",
+    "続けているあなたは、始める前のあなたとは、もう違います",
+    "しっかり食べるのも、やせるための<b>大事な仕事</b>です。体はちゃんと食べてこそ動きます"
+  ]
+};
+const TIP_KIND={know:"💡 まめ知識",tip:"👟 小さなコツ",heart:"🌱 ひとこと"};
+/* 3種類を交互にならべた一覧（めくったときに同じ種類が続かないように） */
+const TIP_ALL=(()=>{ const a=[],n=Math.max(...Object.values(TIPS).map(x=>x.length));
+  for(let i=0;i<n;i++) for(const k of ["know","heart","tip"]) if(TIPS[k][i]) a.push([k,TIPS[k][i]]);
+  return a; })();
+/* その日の様子に合うもの（なければ null） */
+const TIP_FOR={
+  gentle:[["heart",1],["heart",8],["heart",2],["heart",9]],
+  worry:[["know",16],["know",8],["heart",15]],
+  weightUp:[["know",1],["know",2],["know",15]],
+  empty:[["heart",0],["heart",5],["tip",8]]
+};
+let tipTurn={k:null,n:0};
+function tipOf(k){
+  const t=totals(k), d=DB.days[k], has=d&&(d.meals.length||d.exs.length);
+  const seed=hashOf(k+"tip");
+  if(tipTurn.k!==k) tipTurn={k,n:0};
+  let sit=null;
+  if(t.ready&&has){
+    const p=DB.profile, w=DB.weights[k], pw=prevWeight(k);
+    if(t.inK>0&&(t.inK<t.bmr-150||t.bal<=-(p.deficit+800))) sit="worry";
+    else if(w!=null&&pw&&w>pw.w+0.05) sit="weightUp";
+    else if(t.bal>0) sit="gentle";
+  }else if(!has) sit="empty";
+  if(tipTurn.n===0&&sit){
+    const c=TIP_FOR[sit][seed%TIP_FOR[sit].length];
+    return [c[0],TIPS[c[0]][c[1]]];
+  }
+  return TIP_ALL[(seed+tipTurn.n)%TIP_ALL.length];
+}
+function tipHTML(k){
+  if(DB.profile.tips===false) return "";
+  const [kind,text]=tipOf(k);
+  // TIPS の文はアプリ内の固定文なので、<b> をそのまま使う
+  return `<section class="card tip" aria-label="きょうのひとこと" aria-live="polite">
+    <div class="tk">${TIP_KIND[kind]}</div><div class="tx">${text}</div>
+    <button class="nx" onclick="nextTip()">つぎのひとこと →</button></section>`;
+}
+function nextTip(){
+  tipTurn.n++;
+  const el=document.querySelector(".tip");
+  if(!el){ render(); return; }
+  const [kind,text]=tipOf(cur);
+  el.querySelector(".tk").textContent=TIP_KIND[kind];
+  el.querySelector(".tx").innerHTML=text;
+}
+
 const CHARA_IMG={
   smile:"chara/karon-smile.png",
   cheer:"chara/karon-cheer.png",
@@ -1227,6 +1343,7 @@ function renderToday(){
 
   /* 応援キャラ */
   h+=cheerHTML(cur);
+  h+=tipHTML(cur);
 
   /* 体重 */
   const wv=DB.weights[cur], prev=prevWeight(cur);
@@ -1484,6 +1601,9 @@ function renderSet(){
       <input id="pCName" type="text" maxlength="8" value="${esc(p.charaName||"カロン")}" placeholder="カロン"></div>
     <div class="help">「きょう」の画面のいちばん上に出て、その日の様子に合わせて声をかけてくれます。
       食べる量が少なすぎる日は、ほめずに止めてくれます。</div>
+    <label class="chk" style="margin:12px 0 4px"><input type="checkbox" id="pTips"${p.tips!==false?" checked":""}>
+      <span style="color:var(--ink);font-weight:700">きょうのひとことを出す</span></label>
+    <div class="help">ためになるまめ知識・小さなコツ・はげましの言葉を、1日1つ出します。食べすぎた日や体重が増えた日は、それに合う言葉を選びます。</div>
     <button class="btn" style="margin-top:10px" onclick="saveCheer()">保存する</button>
   </div>`;
 
@@ -1535,6 +1655,7 @@ function saveProfile(){
 }
 function saveCheer(){
   DB.profile.cheer=document.getElementById("pCheer").checked;
+  DB.profile.tips=document.getElementById("pTips").checked;
   const n=document.getElementById("pCName").value.trim();
   DB.profile.charaName=n||"カロン";
   save(); renderSet(); toast("保存しました");
