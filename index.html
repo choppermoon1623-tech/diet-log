@@ -1441,11 +1441,25 @@ function drawFood(){
       <label class="chk"><input type="checkbox" id="mFav">定番にも登録しておく</label>
       <button class="btn" onclick="addManualMeal()">追加する</button>`;
   }
-  shBody.innerHTML=h;
+  setBody(h,"fq");
   const fq=document.getElementById("fq");
-  if(fq){ fq.oninput=()=>{st.q=fq.value; const p=fq.selectionStart; drawFood(); const n=document.getElementById("fq"); n.focus(); n.setSelectionRange(p,p);}; }
+  if(fq){ fq.oninput=()=>{st.q=fq.value; drawFood();}; }
 }
 function setQty(q){ sheetState.qty=q; drawFood(); }
+
+/* シートの中身を描き直す。検索欄に入力中なら、検索欄そのものは作り直さず前後だけ差しかえる。
+   作り直すと日本語入力の変換中の文字が消える（「k」を打つと再描画で消え、母音が入らない） */
+function setBody(h,keepId){
+  const old=document.getElementById(keepId);
+  if(!old||old.parentNode!==shBody||document.activeElement!==old){ shBody.innerHTML=h; return; }
+  const tmp=document.createElement("div"); tmp.innerHTML=h;
+  const nu=tmp.querySelector("#"+keepId);
+  if(!nu||nu.parentNode!==tmp){ shBody.innerHTML=h; return; }
+  const before=[],after=[]; let seen=false;
+  [...tmp.childNodes].forEach(n=>{ if(n===nu){seen=true;return;} (seen?after:before).push(n); });
+  [...shBody.childNodes].forEach(n=>{ if(n!==old) n.remove(); });
+  old.before(...before); old.after(...after);
+}
 
 /* ---- 食品成分表の検索 ----
    成分表の名前は「にわとり」「ぶた」「めし」のように、ふだんの言い方と違うことが多い。
@@ -1775,9 +1789,9 @@ function drawEx(){
       <label class="chk"><input type="checkbox" id="eFav">定番にも登録しておく</label>
       <button class="btn" onclick="addManualEx()">追加する</button>`;
   }
-  shBody.innerHTML=h;
+  setBody(h,"eq");
   const eq=document.getElementById("eq");
-  if(eq){ eq.oninput=()=>{st.q=eq.value; const p=eq.selectionStart; drawEx(); const n=document.getElementById("eq"); n.focus(); n.setSelectionRange(p,p);}; }
+  if(eq){ eq.oninput=()=>{st.q=eq.value; drawEx();}; }
 }
 function setMin(m){ sheetState.min=m; drawEx(); }
 function addEx(name,mets,min){
@@ -1833,9 +1847,9 @@ function drawFavEdit(){
         <button class="btn" onclick="addFavManual()">登録する</button>`;
     }
   }
-  shBody.innerHTML=h;
+  setBody(h,"vq");
   const vq=document.getElementById("vq");
-  if(vq){ vq.oninput=()=>{st.q=vq.value; const p=vq.selectionStart; drawFavEdit(); const n=document.getElementById("vq"); n.focus(); n.setSelectionRange(p,p);}; }
+  if(vq){ vq.oninput=()=>{st.q=vq.value; drawFavEdit();}; }
 }
 function addFav(t,name,v){
   if(t==="food") DB.favFoods.push({id:uid(),name,kcal:v,slot:null});
