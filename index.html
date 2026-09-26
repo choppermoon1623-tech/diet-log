@@ -2026,10 +2026,11 @@ function drawFood(){
           <span class="kc">${f[1]} kcal<small style="display:block;font-size:.68rem;text-align:right">/100g</small></span><span class="st">g</span></button>`;
       });
       if(hits.length>80) h+=`<div class="empty">ほか${hits.length-80}件。ことばを足すとしぼれます（例：「むね 皮なし」）</div>`;
-      /* ネットの商品データベース */
-      h+=`<h2 class="sec" style="margin-left:0">市販の商品（ネット検索）</h2>`+drawNetResults(q);
+      /* 市販の商品（同梱リスト → 見つからなければネット） */
+      h+=drawProducts(q);
+      h+=`<h2 class="sec" style="margin-left:0">ネットでさがす</h2>`+drawNetResults(q);
     }else{
-      h+=`<div class="empty" style="text-align:left">ことばを入れると、<b>食品成分表（2,478食品）</b>と<b>市販の商品</b>もさがせます。バーコードの数字（13けた）でもOK。</div>`;
+      h+=`<div class="empty" style="text-align:left">ことばを入れると、<b>食品成分表（2,478食品）</b>と<b>市販の商品（約1.6万件）</b>もさがせます。バーコードの数字（13けた）でもOK。</div>`;
     }
   }
   else if(st.mode==="photo"){
@@ -2118,52 +2119,118 @@ function pickSeibun(i){
   drawFood();
 }
 
-/* ---- 市販の商品（Open Food Facts） ----
+/* ---- 市販の商品（同梱リスト） ----
+   Open Food Facts の検索サーバは混んでいて 503 で落ちることが多い（2026-09 に試すと4回に3回）。
+   日本で売られている商品は products-jp.json に前もってまとめ、手元で引く（作り直しは tools/build_products.mjs）。
+   はじめて検索したときに読みこみ、あとはブラウザのキャッシュから */
+let PRODUCTS=null, PRODUCTS_N=null, productsP=null, productsErr=false;
+function loadProducts(){
+  if(PRODUCTS||productsP) return;
+  productsErr=false;
+  productsP=fetch("products-jp.json").then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }).then(j=>{
+    PRODUCTS=j.items.map(a=>({name:a[0],brand:a[1],per100:a[2],serving:a[3]!=null?{kcal:a[3],g:a[4],label:a[5]}:null,code:a[6]}));
+    PRODUCTS_N=PRODUCTS.map(p=>norm(p.brand+" "+p.name));
+  }).catch(()=>{ productsErr=true; }).finally(()=>{
+    productsP=null;
+    const st=sheetState;
+    if(st&&st.kind==="food"&&st.mode==="search"&&!st.pick&&st.q.trim()) drawFood();
+  });
+}
+function searchProducts(q){
+  const code=q.replace(/[\s-]/g,"");
+  if(/^\d{8,14}$/.test(code)) return PRODUCTS.map((p,i)=>i).filter(i=>PRODUCTS[i].code===code);
+  const toks=norm(q).split(/[\s・,、]+/).filter(Boolean);
+  if(!toks.length) return [];
+  const hit=[];
+  PRODUCTS_N.forEach((n,i)=>{ if(toks.every(t=>n.includes(t))) hit.push(i); });
+  /* 商品名（ブランドでなく）に当たる・語の頭で当たる・名前が短い ものを先に */
+  const score=i=>{ const n=norm(PRODUCTS[i].name); let s=n.length; toks.forEach(t=>{ if(!n.includes(t)) s+=200; else if(!n.startsWith(t)) s+=20; }); return s; };
+  const sc={}; hit.forEach(i=>sc[i]=score(i));
+  return hit.sort((a,b)=>sc[a]-sc[b]);
+}
+function productRow(p,onclick){
+  return `<button class="pick" onclick="${onclick}">
+      <span class="nm">${esc(p.name)}<small>${esc([p.brand,p.serving?`1食 ${p.serving.label}`:""].filter(Boolean).join("・"))}</small></span>
+      <span class="kc">${p.serving?`${p.serving.kcal} kcal<small style="display:block;font-size:.68rem;text-align:right">/1食</small>`:`${p.per100} kcal<small style="display:block;font-size:.68rem;text-align:right">/100g</small>`}</span><span class="st">＋</span></button>`;
+}
+function drawProducts(q){
+  if(!PRODUCTS){
+    if(productsErr) return `<h2 class="sec" style="margin-left:0">市販の商品</h2><div class="empty">商品リストを読みこめませんでした。<br><button class="btn" style="margin-top:8px" onclick="loadProducts();drawFood()">もう一度</button></div>`;
+    loadProducts();
+    return `<h2 class="sec" style="margin-left:0">市販の商品</h2><div class="empty">商品リストを読みこみ中…</div>`;
+  }
+  const hits=searchProducts(q);
+  let h=`<h2 class="sec" style="margin-left:0">市販の商品（${hits.length}件）</h2>`;
+  if(!hits.length) h+=`<div class="empty">日本の商品 ${PRODUCTS.length.toLocaleString()}件には見つかりません。商品名の一部やメーカー名でもさがせます</div>`;
+  hits.slice(0,60).forEach(i=>{ h+=productRow(PRODUCTS[i],`pickProduct(${i})`); });
+  if(hits.length>60) h+=`<div class="empty">ほか${hits.length-60}件。ことばを足すとしぼれます（例：「ヨーグルト 明治」）</div>`;
+  if(hits.length) h+=`<div class="help" style="margin-top:6px">Open Food Facts（だれでも登録できるデータ）より。パッケージの表示と違うときは、パッケージを信じてください。</div>`;
+  return h;
+}
+function pickProduct(i){ pickFromProduct(PRODUCTS[i]); }
+function pickFromProduct(p){
+  sheetState.pick={name:(p.brand?p.brand+" ":"")+p.name,per100:p.per100,serving:p.serving,
+    g:p.serving&&p.serving.g?p.serving.g:100,useServing:!!p.serving,src:"Open Food Facts"};
+  drawFood();
+}
+
+/* ---- 市販の商品（Open Food Facts へ直接） ----
    無料・登録不要の公開データベース。だれでも登録できるので数字の誤りもある。
    1分あたりの回数制限があるので、入力のたびではなくボタンを押したときだけ問い合わせる */
 function drawNetResults(q){
   const n=sheetState.net;
   if(!n||n.q!==q){
     return `<button class="btn" style="background:var(--bg);color:var(--accent)" onclick="netSearch()">🌐「${esc(q)}」をネットでさがす</button>
-      <div class="help" style="margin-top:6px">Open Food Facts（世界の食品パッケージ情報）から探します。通信が必要です。</div>`;
+      <div class="help" style="margin-top:6px">上に無いとき用。Open Food Facts（世界の食品パッケージ情報）に直接たずねます。混んでいてつながりにくいことがあります。</div>`;
   }
-  if(n.state==="loading") return `<div class="empty">さがしています…</div>`;
-  if(n.state==="error") return `<div class="empty">つながりませんでした（${esc(n.msg)}）。少し待ってからもう一度どうぞ。<br><button class="btn" style="margin-top:8px" onclick="netSearch()">もう一度</button></div>`;
+  if(n.state==="loading") return `<div class="empty">さがしています…${n.try>1?`（混んでいるので${n.try}回目）`:""}</div>`;
+  if(n.state==="error") return `<div class="empty">相手のサーバが混んでいて、つながりませんでした（${esc(n.msg)}）。少し待ってからもう一度どうぞ。<br><button class="btn" style="margin-top:8px" onclick="netSearch()">もう一度</button></div>`;
   if(!n.items.length) return `<div class="empty">見つかりませんでした。日本の商品は登録が少なめです。パッケージの数字を「手入力」でどうぞ</div>`;
-  return n.items.map((p,i)=>`<button class="pick" onclick="pickNet(${i})">
-      <span class="nm">${esc(p.name)}<small>${esc([p.brand,p.serving?`1食 ${p.serving.label}`:""].filter(Boolean).join("・"))}</small></span>
-      <span class="kc">${p.serving?`${p.serving.kcal} kcal<small style="display:block;font-size:.68rem;text-align:right">/1食</small>`:`${p.per100} kcal<small style="display:block;font-size:.68rem;text-align:right">/100g</small>`}</span><span class="st">＋</span></button>`).join("")
+  return n.items.map((p,i)=>productRow(p,`pickNet(${i})`)).join("")
     +`<div class="help" style="margin-top:6px">だれでも登録できるデータです。パッケージの表示と違うときは、パッケージを信じてください。</div>`;
 }
 async function netSearch(){
   const st=sheetState, q=st.q.trim();
   if(!q) return;
-  st.net={q,state:"loading",items:[]}; drawFood();
-  const ac=new AbortController(); const timer=setTimeout(()=>ac.abort(),15000);
+  st.net={q,state:"loading",items:[],try:1}; drawFood();
   const fields="code,product_name,product_name_ja,brands,nutriments,serving_quantity,serving_size";
-  const barcode=/^\d{8,14}$/.test(q.replace(/[\s-]/g,""));
+  const code=q.replace(/[\s-]/g,""), barcode=/^\d{8,14}$/.test(code);
   /* 商品名はカタカナが多いので、ひらがなだけの入力（「よーぐると」）はカタカナでも引く */
   const words=barcode?[q]:[...new Set([q,/^[ぁ-ゖー\s]+$/.test(q)?toKata(q):q])];
-  const urls=barcode
-    ? [`https://world.openfoodfacts.org/api/v2/product/${q.replace(/[\s-]/g,"")}.json?fields=${fields}`]
-    : words.map(w=>`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(w)}&search_simple=1&json=1&page_size=40&fields=${fields}`);
-  try{
-    const raw=[];
-    for(const url of urls){
-      const r=await fetch(url,{signal:ac.signal});
-      if(!r.ok&&!(barcode&&r.status===404)) throw new Error("HTTP "+r.status);
-      const j=await r.json();
-      raw.push(...(barcode?(j.product?[j.product]:[]):(j.products||[])));
+  const url=(host,w)=>barcode
+    ? `https://${host}.openfoodfacts.org/api/v2/product/${code}.json?fields=${fields}`
+    : `https://${host}.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(w)}&search_simple=1&json=1&page_size=40&fields=${fields}`;
+  const alive=()=>sheetState===st&&st.net&&st.net.q===q&&st.net.state==="loading";
+  /* 検索サーバは 503 を返すことが多い（503 には CORS ヘッダーが無く、ブラウザには「通信エラー」に見える）。
+     入口（world/jp）を替えながら、間をあけて4回まで取り直す */
+  const HOSTS=["world","jp","world","jp"], WAIT=[0,1500,3000,5000];
+  let lastErr="";
+  const one=async w=>{
+    for(let t=0;t<HOSTS.length;t++){
+      if(!alive()) throw new Error("gone");
+      if(t){ if(st.net.try<t+1){ st.net.try=t+1; drawFood(); } await new Promise(r=>setTimeout(r,WAIT[t])); }
+      try{
+        const ac=new AbortController(), timer=setTimeout(()=>ac.abort(),10000);
+        const r=await fetch(url(HOSTS[t],w),{signal:ac.signal}).finally(()=>clearTimeout(timer));
+        if(barcode&&r.status===404) return [];
+        if(!r.ok){ lastErr="HTTP "+r.status; continue; }
+        const j=await r.json();
+        return barcode?(j.product?[j.product]:[]):(j.products||[]);
+      }catch(e){ lastErr=e.name==="AbortError"?"時間切れ":"通信エラー"; }
     }
+    throw new Error(lastErr);
+  };
+  const res=await Promise.allSettled(words.map(one));
+  if(!alive()) return;   // 待っている間に閉じた・ことばを変えた
+  const ok=res.filter(r=>r.status==="fulfilled");
+  if(!ok.length){
+    st.net={q,state:"error",items:[],msg:lastErr||"通信エラー"};
+  }else{
     const seen=new Set();
-    const items=raw.map(offItem).filter(p=>{ if(!p) return false; const k=p.brand+"|"+p.name; if(seen.has(k)) return false; seen.add(k); return true; });
-    if(sheetState!==st||st.net.q!==q) return;   // 待っている間に閉じた・ことばを変えた
+    const items=ok.flatMap(r=>r.value).map(offItem).filter(p=>{ if(!p) return false; const k=p.brand+"|"+p.name; if(seen.has(k)) return false; seen.add(k); return true; });
     st.net={q,state:"done",items};
-  }catch(e){
-    if(sheetState!==st||st.net.q!==q) return;
-    st.net={q,state:"error",items:[],msg:e.name==="AbortError"?"時間切れ":"通信エラー"};
-  }finally{ clearTimeout(timer); }
-  if(sheetState===st&&st.kind==="food"&&st.mode==="search"&&!st.pick) drawFood();
+  }
+  if(st.kind==="food"&&st.mode==="search"&&!st.pick) drawFood();
 }
 /* 商品データを {name, brand, per100, serving} に。ありえない数字（100gで900kcal超など）は捨てる */
 function offItem(p){
@@ -2182,12 +2249,7 @@ function offItem(p){
   const brand=String(p.brands||"").split(",")[0].trim().slice(0,40);
   return {name:name.slice(0,120),brand,per100,serving};
 }
-function pickNet(i){
-  const p=sheetState.net.items[i];
-  sheetState.pick={name:(p.brand?p.brand+" ":"")+p.name,per100:p.per100,serving:p.serving,
-    g:p.serving&&p.serving.g?p.serving.g:100,useServing:!!p.serving,src:"Open Food Facts"};
-  drawFood();
-}
+function pickNet(i){ pickFromProduct(sheetState.net.items[i]); }
 
 /* ---- グラムを入れてカロリーを出す ---- */
 function gramKcal(pk){
