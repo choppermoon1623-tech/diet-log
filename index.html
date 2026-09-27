@@ -430,6 +430,36 @@ textarea.ta{border-radius:12px}
 .hrow .bal{font-size:1.05rem}
 .help{font-size:.82rem}
 
+
+/* 続けた行動と、体重の傾向 */
+.journey{background:var(--card);border-top:3px solid var(--out);padding:18px}
+.journey-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.journey h2,.trend h2{font-size:1rem;margin:0 0 5px}
+.journey .eyebrow{color:var(--out);font-size:.7rem;font-weight:700;letter-spacing:.12em;margin-bottom:8px}
+.journey .count{font:600 1.9rem var(--f-num);white-space:nowrap;color:var(--out)}
+.journey .count small{font:500 .75rem sans-serif}
+.week-stamps{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin:15px -3px 10px}
+.week-stamps button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:64px;border-radius:12px;color:var(--sub);font-size:.65rem}
+.week-stamps .stamp{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--bg);font-size:.9rem}
+.week-stamps .done .stamp{background:var(--out);color:var(--card)}
+.week-stamps .current{outline:1px solid var(--out);outline-offset:-1px}
+.journey-foot{font-size:.78rem;color:var(--sub);line-height:1.6}
+.journey-foot b{color:var(--ink)}
+.journey-link{display:block;width:100%;min-height:44px;text-align:left;color:var(--accent);font-size:.8rem;margin-top:4px}
+.trend{padding:18px}
+.trend-value{font:600 2rem var(--f-num);margin:12px 0 4px;color:var(--out)}
+.trend-value small{font-size:.85rem;color:var(--sub)}
+.trend-meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:.8rem;margin:8px 0}
+.goal-track{height:8px;background:var(--bg);border-radius:8px;overflow:hidden;margin:12px 0}
+.goal-track i{display:block;height:100%;background:var(--out);border-radius:8px}
+.badges{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
+.badge{padding:12px 4px;text-align:center;border:1px dashed var(--line);border-radius:14px;font-size:.7rem;color:var(--sub)}
+.badge b{display:block;font:600 1.25rem var(--f-num);margin-bottom:5px}
+.badge.earned{border-style:solid;border-color:var(--out);background:var(--bg);color:var(--out)}
+.week-facts{display:flex;gap:10px;margin:12px 0}.week-facts>div{flex:1;font-size:.75rem;color:var(--sub)}
+.week-facts b{display:block;color:var(--ink);font:600 1.4rem var(--f-num);margin-bottom:4px}
+.chart-key{display:flex;gap:14px;flex-wrap:wrap;font-size:.72rem;color:var(--sub);margin-top:8px}
+
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -1374,58 +1404,78 @@ function totals(k){
   return {inK,exK,bmr:b,life:l,outK,bal:inK-outK,ready:b!=null};
 }
 
+/* Motivation is derived from existing records; no additional stored state. */
+const RECORD_BADGES=[1,3,7,14,30,60,100];
+function hasRecord(k){
+  const d=DB.days[k];
+  return DB.weights[k]!=null||!!(d&&(d.meals.length||d.exs.length));
+}
+function journeyStats(k){
+  const dates=Array.from({length:7},(_,i)=>shiftDay(k,i-6));
+  const keys=[...new Set([...Object.keys(DB.days),...Object.keys(DB.weights)])].filter(x=>x<=k&&hasRecord(x)).sort();
+  let end=k,streak=0;
+  // きょうが未記録でも、昨日までの継続はその日いっぱい表示する。
+  if(!hasRecord(end)&&k===todayKey()) end=shiftDay(end,-1);
+  while(hasRecord(end)){streak++;end=shiftDay(end,-1);}
+  return {dates,total:keys.length,streak,count:dates.filter(hasRecord).length,
+    next:RECORD_BADGES.find(n=>n>keys.length)||null,
+    meals:dates.filter(x=>DB.days[x]?.meals.length).length,
+    exercise:dates.filter(x=>DB.days[x]?.exs.length).length,
+    weights:dates.filter(x=>DB.weights[x]!=null).length,
+    resumed:hasRecord(k)&&!hasRecord(shiftDay(k,-1))&&keys.some(x=>x<shiftDay(k,-1))};
+}
+function weightWindow(end){
+  const start=shiftDay(end,-6);
+  const keys=Object.keys(DB.weights).filter(k=>k>=start&&k<=end).sort();
+  return {keys,n:keys.length,avg:keys.length>=3?keys.reduce((v,k)=>v+DB.weights[k],0)/keys.length:null};
+}
+function weightTrend(k){
+  const now=weightWindow(k),prev=weightWindow(shiftDay(k,-7));
+  const keys=Object.keys(DB.weights).filter(x=>x<=k).sort();
+  const initialEnd=keys.length?shiftDay(keys[0],6):null;
+  const firstEnd=initialEnd?[initialEnd,...keys.filter(x=>x>initialEnd)].find(x=>x<=k&&weightWindow(x).avg!=null)||null:null;
+  const base=firstEnd&&firstEnd<=k?weightWindow(firstEnd):{avg:null,n:0};
+  const goal=DB.profile.goalWeight;
+  // 比較元の最初の7日間と現在の7日間が重ならない時に進捗を表示。
+  const eligible=now.avg!=null&&base.avg!=null&&firstEnd<shiftDay(k,-6)&&goal!=null&&goal<base.avg;
+  return {now,prev,base,goal,firstEnd,
+    delta:now.avg!=null&&prev.avg!=null?now.avg-prev.avg:null,
+    progress:eligible?Math.max(0,Math.min(100,100*(base.avg-now.avg)/(base.avg-goal))):null};
+}
+function signedWeight(n){const v=Math.round(n*10)/10;return (v>0?'+':v<0?'−':'±')+Math.abs(v).toFixed(1);}
+function journeyHTML(k,full=false){
+  const a=journeyStats(k);
+  let title=a.resumed?'おかえりなさい。今日からまた一歩。':a.count===7?'7日間、記録を積み重ねました':hasRecord(k)?'今日の一歩、残せました':a.total?'今日も、できることから。':'最初の一歩を、ここから。';
+  return `<section class="card journey" aria-label="続ける力">
+    <div class="eyebrow">続ける力</div><div class="journey-head"><h2>${title}</h2><div class="count">${a.count}<small> / 7日</small></div></div>
+    <div class="week-stamps">${a.dates.map(d=>`<button class="${hasRecord(d)?'done ':''}${d===k?'current':''}" onclick="go('today','${d}')" aria-label="${labelOf(d)} ${hasRecord(d)?'記録あり':'未記録'}を開く"><span>${labelShort(d)}</span><span class="stamp" aria-hidden="true">${hasRecord(d)?'✓':'·'}</span></button>`).join('')}</div>
+    <div class="journey-foot"><b>累計 ${a.total}日</b>${a.streak?' ・ '+a.streak+'日継続中':''}<br>${a.next?'次のバッジまで、記録あと '+(a.next-a.total)+'日。':'100日の節目を達成。これからも自分のペースで。'}<br>休んだ日があっても、積み重ねは残ります。</div>
+    ${full?`<div class="badges" aria-label="累計記録バッジ">${RECORD_BADGES.map(n=>`<div class="badge ${a.total>=n?'earned':''}"><b>${a.total>=n?'✓ ':''}${n}日</b>${a.total>=n?'獲得':'これから'}</div>`).join('')}</div><p class="help">食事・運動・体重のいずれかを記録した日を、1日として数えます。</p><div class="week-facts"><div><b>${a.meals}日</b>食事を記録</div><div><b>${a.exercise}日</b>運動を記録</div><div><b>${a.weights}日</b>体重を記録</div></div>`:`<button class="journey-link" onclick="go('hist')">積み重ねと体重の傾向を見る →</button>`}
+  </section>`;
+}
+function trendHTML(k){
+  const t=weightTrend(k),a=t.now;
+  let body=a.avg==null?`<p class="help">直近7日間に体重を3日分記録すると、平均が見えます。いまは${a.n}日分。測れる日に、同じ条件で。</p>`:
+    `<div class="trend-value">${a.avg.toFixed(1)} <small>kg</small></div><div class="trend-meta"><span>${labelShort(shiftDay(k,-6))}〜${labelShort(k)} · ${a.n}日分の平均</span><span>${t.delta==null?'前の7日間は比較データ不足':'前の7日間比 '+signedWeight(t.delta)+' kg'}</span></div><p class="help">${t.delta==null?'前の7日間にも3日分の記録がたまると比較できます。':'1日の増減より、数週間の流れを見ていきましょう。'}</p>`;
+  if(t.goal==null) body+=`<button class="journey-link" onclick="go('set')">目標体重を設定する →</button>`;
+  else if(t.progress!=null) body+=`<div class="trend-meta"><b>目標までの進み具合</b><span>${Math.floor(t.progress)}%</span></div><div class="goal-track" role="progressbar" aria-label="目標体重への進捗" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.floor(t.progress)}"><i style="width:${t.progress}%"></i></div><div class="trend-meta"><span>最初の7日平均 ${t.base.avg.toFixed(1)}kg</span><span>目標 ${t.goal}kg</span></div><p class="help">${a.avg<=t.goal?'7日平均が目標に届いています。これからも無理のない習慣を大切に。':'7日平均では目標まで '+(a.avg-t.goal).toFixed(1)+'kg。焦らず積み重ねていきましょう。'}</p>`;
+  else body+=`<p class="help">目標 ${t.goal}kg。平均の記録がたまると、目標への進み具合を確認できます。</p>`;
+  return `<section class="card trend" aria-label="体重の傾向"><h2>体重は、7日平均で。</h2>${body}<details class="help"><summary>平均の見方</summary><p>7回ではなく7日間の記録を平均します。未記録日は埋めません。比較する2つの期間は重なりません。記録日数や測定条件が違うと比較にも影響します。平均値は見やすくするための目安です。目標への進捗は、最初に3日分そろった7日間の平均を基準にします。直近7日間と重なる間や、目標が基準以上の場合は進捗率を表示しません。</p></details></section>`;
+}
+
 /* ============================================================
    応援モード（キャラの表情とひとこと）
    ============================================================ */
-const CHEER={
-  hello:{
-    morning:["おはよう！今日も記録からはじめよっか","朝ごはん、食べた？忘れないうちに入れとこ"],
-    day:["お昼だね。午前に食べたもの、入れちゃお？","今日のぶん、まだ空っぽだよ"],
-    night:["今日のぶん、まだ入ってないよ。思い出せるところからでいいよ","寝る前に、今日食べたものを入れちゃお？"]
-  },
-  cheer:["いい調子！あと{rest}kcalで今日の目標だよ","あとちょっと。ひと歩きしてくる？","もう少しでとどくよ。がんばれー！","あと{rest}kcal。いけるいける！"],
-  joy:["今日の目標クリア！えらい！","やったー！この調子でいこ！","きっちり達成だね。ちゃんと続いてるよ","今日もよくがんばりました！"],
-  gentle:["今日はちょっと多めだったね。でも記録できたのがえらいよ","1日くらい平気だよ。明日またいっしょにやろ？","食べすぎる日があるのがふつうだよ。気にしすぎないでね","数字より、続いてることのほうが大事だからね"],
-  worry:["今日は食べる量が少なすぎるみたい。基礎代謝のぶんは食べたほうが、かえってやせやすいよ","がんばりすぎてない？ちゃんと食べるのも大事な練習だよ","減らしすぎるとリバウンドしやすいんだって。無理しないでね"]
-};
 function hashOf(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return h; }
-/* その日が目標達成だった連続日数（記録のない日でとぎれる） */
-function achieveStreak(k){
-  let n=0,c=k;
-  for(let i=0;i<400;i++){
-    const d=DB.days[c];
-    if(!d||(!d.meals.length&&!d.exs.length)) break;
-    const t=totals(c);
-    if(!t.ready||t.bal>-DB.profile.deficit) break;
-    n++; c=shiftDay(c,-1);
-  }
-  return n;
-}
 /* いまの状況に合う表情とひとことを選ぶ */
 function cheerOf(k){
-  const p=DB.profile, t=totals(k), d=DB.days[k];
-  const has=d&&(d.meals.length||d.exs.length);
-  const pick=(a,salt)=>a[hashOf(k+salt)%a.length];
-  if(!t.ready) return {exp:"smile",text:"はじめまして、"+(p.charaName||"カロン")+"だよ。設定で身長と体重を入れたら、いっしょにはじめよう！"};
-  if(!has){
-    const h=new Date().getHours();
-    const part=(k===todayKey())?(h<11?"morning":h<17?"day":"night"):"day";
-    return {exp:"smile",text:pick(CHEER.hello[part],"h")};
-  }
-  const w=DB.weights[k], pw=prevWeight(k);
-  if(w!=null&&pw&&w<pw.w-0.05){
-    if(p.goalWeight&&w<=p.goalWeight) return {exp:"joy",text:"目標体重にとどいたよ！本当におつかれさま！"};
-    return {exp:"joy",text:(Math.round((pw.w-w)*10)/10)+"kg 減ってるよ。がんばったね！"};
-  }
-  // 食べなさすぎは、ほめずに止める
-  if(t.inK>0&&(t.inK<t.bmr-150||t.bal<=-(p.deficit+800))) return {exp:"worry",text:pick(CHEER.worry,"w")};
-  if(t.bal<=-p.deficit){
-    const st=achieveStreak(k);
-    if([3,5,7,10,14,20,30,50,100].indexOf(st)>=0) return {exp:"joy",text:st+"日つづけて達成だよ。すごい！"};
-    return {exp:"joy",text:pick(CHEER.joy,"j")};
-  }
-  if(t.bal<0) return {exp:"cheer",text:pick(CHEER.cheer,"c").replace("{rest}",t.bal+p.deficit)};
-  return {exp:"gentle",text:pick(CHEER.gentle,"g")};
+  const a=journeyStats(k),d=DB.days[k],meals=d?.meals.length||0;
+  if(!hasRecord(k)) return {exp:"smile",text:a.total?"今日は、ひとつ記録するところから。前の積み重ねはちゃんと残っているよ。":"食べたもの・運動・体重。まずはひとつ、残してみよう！"};
+  if(a.resumed) return {exp:"joy",text:"おかえりなさい！また記録できたことが、今日の一歩だよ。"};
+  if(RECORD_BADGES.includes(a.total)) return {exp:"joy",text:"記録が累計"+a.total+"日になったよ！積み重ねた自分に、ひと息のごほうびを。"};
+  if(a.count===7) return {exp:"joy",text:"7日間、記録が続いているよ。体重の数字が動かない日も、この積み重ねは残るよ。"};
+  if(meals) return {exp:"cheer",text:"食べたものを記録できたね。量の多い日も少ない日も、正直な記録が次のヒントになるよ。"};
+  return {exp:"gentle",text:"今日の記録、受け取ったよ。体重は1回の数字より、7日平均で眺めてみよう。"};
 }
 /* ============================================================
    きょうのひとこと（まめ知識・小さなコツ・はげまし）
@@ -1435,7 +1485,7 @@ function cheerOf(k){
    ============================================================ */
 const TIPS={
   know:[
-    "体脂肪1kgは、およそ<b>7,200kcal</b>ぶん。1日240kcal控えると、1か月で1kgくらいのペースです",
+    "カロリーの収支は<b>推定値</b>です。体重は水分などでも変わるので、記録と数週間の傾向を合わせて見ましょう",
     "体重は水分だけで<b>1日に1〜2kg</b>くらい上下します。1日の数字より、1週間の流れを見ましょう",
     "しょっぱい物を食べた翌日は、体が水分をためこんで体重が増えやすくなります。<b>脂肪が増えたわけではありません</b>",
     "脂質は1gで<b>9kcal</b>、たんぱく質と炭水化物は<b>4kcal</b>。同じ量なら、油の多い料理ほど高くなります",
@@ -1582,7 +1632,7 @@ function render(){
 /* ---------- ① きょう ---------- */
 function renderToday(){
   const t=totals(cur), d=day(cur), p=DB.profile;
-  let h="";
+  let h=journeyHTML(cur);
 
   /* 収支カード */
   // 減らしすぎ（月4kg＝週1kgを超えるペース）は「達成」扱いにせず、注意の色にする
@@ -1596,17 +1646,15 @@ function renderToday(){
       <button class="btn" onclick="go('set')">設定を開く</button>
     </div>`;
   }else{
-    const prog = !d.meals.length||t.bal>=0 ? 0 : Math.min(1, -t.bal/Math.max(1,p.deficit));
     h+=`<section class="card balance" aria-label="収支">
       <div class="bhead"><span class="lbl">${cur===todayKey()?"きょう":"この日"}の収支</span><span class="lbl2">記録した摂取 − 推定消費</span></div>
       <div class="num" style="color:${balColor}">${d.meals.length?(t.bal>0?"+":t.bal<0?"−":"")+Math.abs(t.bal).toLocaleString():"—"}<span class="u">kcal</span></div>
       <div class="note">${d.meals.length?balNote(t.bal,p.deficit):"食事を記録すると収支の目安が出ます"}</div>
-      <div class="meter" aria-hidden="true"><i style="width:${prog*100}%;background:${balColor}"></i><b></b></div>
       <div class="goalbar">
         <span>${!d.meals.length?"食事は未記録":
-          tooMuch?'<b style="color:var(--plus)">減らしすぎ</b>':
-          t.bal<=-p.deficit?'<b style="color:var(--minus)">目標達成 ✓</b>':
-          'あと <b>'+(t.bal+p.deficit)+'</b> kcal で目標'}</span>
+          tooMuch?'<b style="color:var(--sub)">入力途中は暫定値</b>':
+          t.bal<=-p.deficit?'<b>設定した収支の目安以下</b>':
+          '収支の目安との差 <b>'+(t.bal+p.deficit)+'</b> kcal'}</span>
         <span>目標 −${p.deficit} / 日</span>
       </div>
       <div class="duo">
@@ -1690,15 +1738,10 @@ function weightSpark(k){
     <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4" fill="var(--out)"/></svg><span>最近${ks.length}回</span></div>`;
 }
 function balNote(bal,goal){
-  if(bal<=-goal){
-    const per=Math.abs(bal)*30/7200;   // 脂肪1kg ≒ 7200kcal
-    // 月4kg（週1kg）を超えるペースは、体をこわしやすいのでほめない
-    if(per>4) return "減らしすぎかも。このままだと 約"+per.toFixed(1)+"kg／月 で、体に無理がかかります";
-    return "目標クリア。このペースなら 約"+per.toFixed(1)+"kg／月 減ります";
-  }
-  if(bal<0) return "マイナスです。もう少しで目標";
-  if(bal===0) return "ちょうどトントンです";
-  return "オーバーしています";
+  if(bal<=-goal) return "記録上は設定した収支の目安以下です";
+  if(bal<0) return "記録した摂取が、1日の推定消費を下回っています";
+  if(bal===0) return "記録した摂取と、1日の推定消費が同じです";
+  return "記録した摂取が、1日の推定消費を上回っています";
 }
 function prevWeight(k){
   const keys=Object.keys(DB.weights).filter(x=>x<k).sort();
@@ -1712,6 +1755,8 @@ function labelShort(k){ const d=dateOf(k); return (d.getMonth()+1)+"/"+d.getDate
 function renderHist(){
   const keys=allKeys();
   let h=`<header class="pagehead"><small>RECORD</small><h1>きろく</h1></header>`;
+
+  h+=trendHTML(todayKey())+journeyHTML(todayKey(),true);
 
   /* まとめ */
   const last7=keys.filter(k=>k>=shiftDay(todayKey(),-6)&&k<=todayKey()&&day(k).meals.length);
@@ -1730,7 +1775,7 @@ function renderHist(){
   h+=`<h2 class="sec">1日の収支（直近14日）</h2><div class="card">${balChart(keys.filter(k=>k>=shiftDay(todayKey(),-13)&&k<=todayKey()&&day(k).meals.length))}</div>`;
 
   /* 体重グラフ */
-  h+=`<h2 class="sec">体重の変化</h2><div class="card">${weightChart()}</div>`;
+  h+=`<h2 class="sec">体重の変化（直近60日）</h2><div class="card">${weightChart()}</div>`;
 
   /* 一覧 */
   h+=`<h2 class="sec">日ごとの記録</h2><div class="list">`;
@@ -1778,11 +1823,12 @@ function balChart(keys){
   return s;
 }
 function weightChart(){
-  const ks=Object.keys(DB.weights).sort().slice(-60);
-  if(ks.length<2) return `<div class="empty">体重を2日ぶん入れるとグラフが出ます</div>`;
+  const ks=Object.keys(DB.weights).filter(k=>k<=todayKey()&&k>=shiftDay(todayKey(),-59)).sort();
+  if(ks.length<2) return `<div class="empty">直近60日間に体重を2日ぶん入れるとグラフが出ます</div>`;
   const W=340,H=140,pad=24;
   const vs=ks.map(k=>DB.weights[k]);
-  let lo=Math.min(...vs), hi=Math.max(...vs);
+  const rolling=ks.map(k=>weightWindow(k).avg).filter(v=>v!=null);
+  let lo=Math.min(...vs,...rolling), hi=Math.max(...vs,...rolling);
   if(DB.profile.goalWeight) hi=Math.max(hi,DB.profile.goalWeight);
   if(DB.profile.goalWeight) lo=Math.min(lo,DB.profile.goalWeight);
   const m=Math.max(1,(hi-lo)*0.25); lo-=m; hi+=m;
@@ -1791,6 +1837,12 @@ function weightChart(){
   const Y=v=>H-16-((v-lo)/(hi-lo))*(H-30);
   let d="",dots="";
   ks.forEach((k,i)=>{ const x=X(k),y=Y(DB.weights[k]); d+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1); dots+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.4" fill="var(--accent)"/>`; });
+  let trendPath="", connected=false;
+  for(let k=ks[0];k<=ks[ks.length-1];k=shiftDay(k,1)){
+    const avg=weightWindow(k).avg;
+    if(avg==null){connected=false;continue;}
+    trendPath+=(connected?'L':'M')+X(k).toFixed(1)+' '+Y(avg).toFixed(1);connected=true;
+  }
   let g="";
   if(DB.profile.goalWeight){ const gy=Y(DB.profile.goalWeight);
     g=`<line x1="${pad}" y1="${gy}" x2="${W-pad}" y2="${gy}" stroke="var(--plus)" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/>
@@ -1798,10 +1850,10 @@ function weightChart(){
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">
     <text class="chart-lg" x="2" y="${Y(hi-m).toFixed(1)}">${(hi-m).toFixed(1)}</text>
     <text class="chart-lg" x="2" y="${Y(lo+m).toFixed(1)}">${(lo+m).toFixed(1)}</text>
-    ${g}<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${dots}
+    ${g}<path d="${d}" fill="none" stroke="var(--accent)" opacity=".4" stroke-width="1"/>${dots}<path d="${trendPath}" fill="none" stroke="var(--out)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
     <text class="chart-lg" x="${pad}" y="${H-2}">${labelShort(ks[0])}</text>
     <text class="chart-lg" x="${W-pad}" y="${H-2}" text-anchor="end">${labelShort(ks[ks.length-1])}</text>
-  </svg>`;
+  </svg><div class="chart-key"><span>● 毎回の体重</span><span style="color:var(--out)">━ 7日平均（3日分から）</span></div>`;
 }
 
 /* ---------- ③ 定番 ---------- */
@@ -1876,7 +1928,7 @@ function renderSet(){
     <div class="fld"><label>キャラクターの名前</label>
       <input id="pCName" type="text" maxlength="8" value="${esc(p.charaName||"カロン")}" placeholder="カロン"></div>
     <div class="help">「きょう」の画面のいちばん上に出て、その日の様子に合わせて声をかけてくれます。
-      食べる量が少なすぎる日は、ほめずに止めてくれます。</div>
+      記録の継続や再開を応援します。食事の少なさや1日の体重減少で達成を判定しません。</div>
     <label class="chk" style="margin:12px 0 4px"><input type="checkbox" id="pTips"${p.tips!==false?" checked":""}>
       <span style="color:var(--ink);font-weight:700">きょうのひとことを出す</span></label>
     <div class="help">ためになるまめ知識・小さなコツ・はげましの言葉を、1日1つ出します。食べすぎた日や体重が増えた日は、それに合う言葉を選びます。</div>
