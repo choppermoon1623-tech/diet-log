@@ -533,7 +533,23 @@ const FOODS = [
 
 ["マヨネーズ",84,"調味料","大さじ1"],["ケチャップ",18,"調味料","大さじ1"],["ドレッシング",60,"調味料","大さじ1"],
 ["ノンオイルドレ",12,"調味料","大さじ1"],["バター",75,"調味料","10g"],["サラダ油",111,"調味料","大さじ1"],
-["砂糖",12,"調味料","小さじ1"],["めんつゆ",10,"調味料","大さじ1"],["ソース",15,"調味料","大さじ1"]
+["砂糖",12,"調味料","小さじ1"],["めんつゆ",10,"調味料","大さじ1"],["ソース",15,"調味料","大さじ1"],
+
+/* コンビニ各社の一般的な商品を想定した概算。商品名・容量・地域で変わるため包装の表示を優先。 */
+["コンビニ 塩おにぎり",180,"コンビニの定番","1個・目安"],["コンビニ 鮭おにぎり",190,"コンビニの定番","1個・目安"],
+["コンビニ ツナマヨおにぎり",230,"コンビニの定番","1個・目安"],["コンビニ 梅おにぎり",170,"コンビニの定番","1個・目安"],
+["コンビニ 昆布おにぎり",180,"コンビニの定番","1個・目安"],["コンビニ 明太子おにぎり",190,"コンビニの定番","1個・目安"],
+["コンビニ いなり寿司",120,"コンビニの定番","1個・目安"],["コンビニ たまごサンド",320,"コンビニの定番","1パック・目安"],
+["コンビニ ミックスサンド",330,"コンビニの定番","1パック・目安"],["コンビニ ハムチーズサンド",300,"コンビニの定番","1パック・目安"],
+["コンビニ サラダチキン",120,"コンビニの定番","1パック約110g・目安"],["コンビニ ゆで卵",75,"コンビニの定番","1個・目安"],
+["コンビニ からあげ",230,"コンビニの定番","1パック約100g・目安"],["コンビニ フライドチキン",250,"コンビニの定番","1個・目安"],
+["コンビニ 焼き魚",180,"コンビニの定番","1パック・目安"],["コンビニ カット野菜",30,"コンビニの定番","1袋約100g・ドレなし"],
+["コンビニ ポテトサラダ",170,"コンビニの定番","1パック約100g・目安"],["コンビニ 豚汁",130,"コンビニの定番","1杯・目安"],
+["コンビニ 春雨スープ",100,"コンビニの定番","1杯・目安"],["コンビニ おでん 大根",15,"コンビニの定番","1個・目安"],
+["コンビニ おでん たまご",80,"コンビニの定番","1個・目安"],["コンビニ おでん こんにゃく",10,"コンビニの定番","1個・目安"],
+["コンビニ おでん ちくわ",55,"コンビニの定番","1個・目安"],["コンビニ 無糖ヨーグルト",65,"コンビニの定番","1個約100g・目安"],
+["コンビニ ギリシャヨーグルト",100,"コンビニの定番","1個・目安"],["コンビニ 無調整豆乳",90,"コンビニの定番","200ml・目安"],
+["コンビニ カフェラテ",130,"コンビニの定番","1杯・砂糖なしの目安"],["コンビニ カットフルーツ",90,"コンビニの定番","1パック約150g・目安"]
 ];
 
 /* 日本食品標準成分表（八訂）2020年版 全2,478食品  [食品名, 100gあたりkcal, 食品群の番号]
@@ -1982,6 +1998,19 @@ function openFood(slot){
   shSeg.querySelectorAll("button").forEach(b=>b.onclick=()=>{sheetState.mode=b.dataset.m;sheetState.pick=null;drawFood();});
   drawFood();
 }
+function recentMeals(k,limit=8){
+  const seen=new Set(), result=[];
+  for(const date of Object.keys(DB.days).filter(x=>x<=k).sort().reverse()){
+    const meals=DB.days[date].meals||[];
+    for(let i=meals.length-1;i>=0;i--){
+      const m=meals[i], id=m.name+"\u0000"+m.kcal;
+      if(seen.has(id)) continue;
+      seen.add(id); result.push(m);
+      if(result.length>=limit) return result;
+    }
+  }
+  return result;
+}
 function drawFood(){
   const st=sheetState;
   shSeg.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.m===st.mode));
@@ -1991,6 +2020,16 @@ function drawFood(){
 
   if(st.mode==="fav"){
     h+=qty;
+    const recent=recentMeals(cur);
+    if(recent.length){
+      h+=`<h2 class="sec" style="margin-left:0">最近食べたもの</h2>`;
+      recent.forEach(m=>{
+        h+=`<button class="pick" onclick="addMeal('${jsq(m.name)}',${m.kcal})">
+          <span class="nm">${esc(m.name)}<small>前回の記録 ${m.kcal} kcal を再利用</small></span>
+          <span class="kc">${Math.round(m.kcal*st.qty)} kcal</span><span class="st">＋</span></button>`;
+      });
+      h+=`<h2 class="sec" style="margin-left:0">定番</h2>`;
+    }
     if(!DB.favFoods.length) h+=`<div class="empty">「定番」タブで登録すると、ここから1タップで入ります</div>`;
     DB.favFoods.forEach(f=>{
       h+=`<button class="pick" onclick="addMeal('${jsq(f.name)}',${f.kcal})">
@@ -2002,10 +2041,12 @@ function drawFood(){
   }
   else if(st.mode==="search"){
     h+=`<input class="srch" id="fq" type="search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ひらがなのままでOK（例：よーぐると）" value="${esc(st.q)}">`;
+    h+=`<button class="btn sub" style="margin:8px 0 4px" onclick="sheetState.q='コンビニ';drawFood()">コンビニの定番を見る</button>`;
     const q=st.q.trim();
     let list=FOODS;
     if(q){ const nq=norm(q); list=FOODS.filter(f=>f[0].includes(q)||f[2].includes(q)||norm(f[0]).includes(nq)); }
     if(q&&list.length) h+=`<h2 class="sec" style="margin-left:0">1人前のめやす</h2>`;
+    if(q&&list.some(f=>f[2]==="コンビニの定番")) h+=`<p class="help">コンビニの数値は一般的な商品の概算です。買った商品の栄養成分表示を優先してください。</p>`;
     if(list.length) h+=qty;
     let lastCat="";
     list.slice(0,q?200:FOODS.length).forEach(f=>{
